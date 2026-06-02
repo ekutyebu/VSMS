@@ -1,0 +1,14 @@
+{
+  "name": "vitalguard-mock-server",
+  "version": "1.0.0",
+  "description": "Mock WebSocket and HTTP server for VitalGuard health monitoring dashboard",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.13.0"
+  }
+}
