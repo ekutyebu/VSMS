@@ -837,10 +837,22 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="flex items-center gap-3 self-stretch sm:self-auto justify-between sm:justify-start">
-                <span className="text-[11px] text-text-secondary font-semibold"><i className="fa-solid fa-clock-rotate-left mr-1"></i> Syncing Live</span>
-                <button onClick={() => setActiveTab('patient')} className="px-3.5 py-1.5 bg-slate-900 border border-border-color hover:bg-slate-800 transition-all text-xs font-semibold rounded-lg text-white">
-                  Change Patient
-                </button>
+                <span className="text-[11px] text-text-secondary font-semibold flex items-center gap-1"><i className="fa-solid fa-clock-rotate-left"></i> Live</span>
+                <select
+                  value={patient.idNumber}
+                  onChange={(e) => activatePatient(e.target.value)}
+                  className="bg-slate-900/80 border border-border-color text-xs rounded-lg px-3 py-1.5 focus:border-colorBlue focus:outline-none text-white font-semibold cursor-pointer max-w-[200px] sm:max-w-none truncate hover:bg-slate-800 transition-all"
+                >
+                  {patientsList.length === 0 ? (
+                    <option value={patient.idNumber}>Monitor: {patient.name}</option>
+                  ) : (
+                    patientsList.map((p) => (
+                      <option key={p.idNumber} value={p.idNumber}>
+                        Monitor: {p.name} ({p.idNumber})
+                      </option>
+                    ))
+                  )}
+                </select>
               </div>
             </div>
 
