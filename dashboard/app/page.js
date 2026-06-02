@@ -317,6 +317,16 @@ export default function Dashboard() {
       socketUrl = `ws://localhost:3000/ws`;
     }
 
+    // HTTPS Mixed Content Check: Insecure ws:// connections to local IPs are blocked on HTTPS hosts
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+      if (socketUrl.startsWith('ws://')) {
+        console.log(`[WebSocket] Insecure connection to ${socketUrl} skipped on HTTPS origin. Telemetry fallback is active.`);
+        setWsStatus('Offline (HTTPS Blocked)');
+        setWsConnected(false);
+        return; // Skip connecting
+      }
+    }
+
     console.log(`Connecting WebSocket to ${socketUrl}...`);
     const ws = new WebSocket(socketUrl);
     wsRef.current = ws;

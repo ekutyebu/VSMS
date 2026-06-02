@@ -8,7 +8,7 @@
 // ==========================================
 #define WIFI_SSID "Javis"
 #define WIFI_PASSWORD "1234567890"
-#define WIFI_IS_AP false // Set to true to start as Access Point, false to connect to local router
+#define WIFI_IS_AP true // Set to true to start as Access Point, false to connect to local router
 #define LOCAL_SSID "Javis"
 #define LOCAL_PASSWORD "1234567890"
 #define BACKEND_SERVER_URL "https://vsms-6z4c.onrender.com" // Next.js backend API vital logs endpoint
