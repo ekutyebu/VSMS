@@ -282,6 +282,8 @@ export default function Dashboard() {
     // 4.1 Update telemetry state
     setTelemetry(payload);
     
+    if (payload.noData) return;
+    
     // 4.2 Play audibles for critical statuses
     if (payload.systemAlertLevel === 2) {
       setShowAlertBanner(true);

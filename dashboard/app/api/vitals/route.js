@@ -121,10 +121,24 @@ export async function GET() {
         wifiConnected: true
       });
     } else {
-      return NextResponse.json(
-        { error: 'No vitals logged yet' },
-        { status: 404 }
-      );
+      return NextResponse.json({
+        noData: true,
+        heartRate: 0,
+        spo2: 0,
+        tempC: 0,
+        tempF: 0,
+        bpSystolic: 120,
+        bpDiastolic: 80,
+        systemAlertLevel: 0,
+        gpsLatitude: 0,
+        gpsLongitude: 0,
+        gpsValid: false,
+        gpsTimestamp: '--:--:--',
+        datetimeStr: '',
+        ecgLeadsOff: true,
+        sdReady: true,
+        wifiConnected: true
+      });
     }
   } catch (err) {
     console.error('[API Vitals] GET error:', err);
