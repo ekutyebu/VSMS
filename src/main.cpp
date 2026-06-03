@@ -149,58 +149,83 @@ void syncDatabase() {
         String responseBody = "";
         
         if (url.isHttps) {
-            WiFiClientSecure clientSecure;
             bool connected = false;
             if (now > 1000000000) { // If NTP time is synchronized (greater than year 2001)
+                WiFiClientSecure clientSecure;
                 clientSecure.setCACert(rootCACertificate);
                 Serial.println("[DB Sync] Secure TLS: Using Let's Encrypt Root CA Certificate verification");
                 clientSecure.setTimeout(4000); // 4-second timeout
                 if (clientSecure.connect(url.host.c_str(), url.port)) {
                     connected = true;
+                    // Send raw HTTP POST request
+                    clientSecure.printf("POST %s HTTP/1.1\r\n", url.path.c_str());
+                    clientSecure.printf("Host: %s\r\n", url.host.c_str());
+                    clientSecure.println("User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                    clientSecure.println("Content-Type: application/json");
+                    clientSecure.printf("Content-Length: %d\r\n", jsonPayload.length());
+                    clientSecure.println("Connection: close");
+                    clientSecure.println();
+                    clientSecure.print(jsonPayload);
+                    
+                    // Read HTTP status line
+                    statusLine = clientSecure.readStringUntil('\n');
+                    
+                    // Read HTTP Headers response
+                    long startTime = millis();
+                    while (clientSecure.connected() && millis() - startTime < 4000) {
+                        String line = clientSecure.readStringUntil('\n');
+                        if (line == "\r" || line == "") {
+                            break;
+                        }
+                    }
+                    
+                    // Read body
+                    responseBody = clientSecure.readString();
+                    success = true;
+                    clientSecure.stop();
                 } else {
                     Serial.println("[DB Sync] Secure TLS: Root CA validation failed. Retrying with setInsecure()...");
                 }
             }
             
             if (!connected) {
-                // Reinitialize client or reset certificate requirements
-                clientSecure.stop();
-                clientSecure.setInsecure();
-                clientSecure.setTimeout(4000);
-                if (clientSecure.connect(url.host.c_str(), url.port)) {
+                WiFiClientSecure clientInsecure;
+                clientInsecure.setInsecure();
+                clientInsecure.setTimeout(4000);
+                if (clientInsecure.connect(url.host.c_str(), url.port)) {
                     connected = true;
                     Serial.println("[DB Sync] Secure TLS: Connected using setInsecure() fallback.");
+                    
+                    // Send raw HTTP POST request
+                    clientInsecure.printf("POST %s HTTP/1.1\r\n", url.path.c_str());
+                    clientInsecure.printf("Host: %s\r\n", url.host.c_str());
+                    clientInsecure.println("User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                    clientInsecure.println("Content-Type: application/json");
+                    clientInsecure.printf("Content-Length: %d\r\n", jsonPayload.length());
+                    clientInsecure.println("Connection: close");
+                    clientInsecure.println();
+                    clientInsecure.print(jsonPayload);
+                    
+                    // Read HTTP status line
+                    statusLine = clientInsecure.readStringUntil('\n');
+                    
+                    // Read HTTP Headers response
+                    long startTime = millis();
+                    while (clientInsecure.connected() && millis() - startTime < 4000) {
+                        String line = clientInsecure.readStringUntil('\n');
+                        if (line == "\r" || line == "") {
+                            break;
+                        }
+                    }
+                    
+                    // Read body
+                    responseBody = clientInsecure.readString();
+                    success = true;
+                    clientInsecure.stop();
                 }
             }
             
-            if (connected) {
-                // Send raw HTTP POST request
-                clientSecure.printf("POST %s HTTP/1.1\r\n", url.path.c_str());
-                clientSecure.printf("Host: %s\r\n", url.host.c_str());
-                clientSecure.println("User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-                clientSecure.println("Content-Type: application/json");
-                clientSecure.printf("Content-Length: %d\r\n", jsonPayload.length());
-                clientSecure.println("Connection: close");
-                clientSecure.println();
-                clientSecure.print(jsonPayload);
-                
-                // Read HTTP status line
-                statusLine = clientSecure.readStringUntil('\n');
-                
-                // Read HTTP Headers response
-                long startTime = millis();
-                while (clientSecure.connected() && millis() - startTime < 4000) {
-                    String line = clientSecure.readStringUntil('\n');
-                    if (line == "\r" || line == "") {
-                        break;
-                    }
-                }
-                
-                // Read body
-                responseBody = clientSecure.readString();
-                success = true;
-                clientSecure.stop();
-            } else {
+            if (!connected) {
                 Serial.println("[DB Sync] Secure TCP socket connection failed!");
             }
         } else {
