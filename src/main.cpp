@@ -24,6 +24,7 @@ void syncDatabase() {
     if (WiFi.status() == WL_CONNECTED) {
         WiFiClientSecure client;
         client.setInsecure(); // Bypass SSL certificate verification for Render HTTPS domain
+        client.setBufferSizes(2048, 1024); // Reduce SSL buffer sizes to save RAM and prevent handshake heap allocation failures
         HTTPClient http;
         http.begin(client, BACKEND_SERVER_URL);
         http.addHeader("Content-Type", "application/json");

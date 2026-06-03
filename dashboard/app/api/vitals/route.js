@@ -108,16 +108,19 @@ export async function GET() {
         CASE WHEN v.latitude IS NOT NULL AND v.longitude IS NOT NULL THEN true ELSE false END AS "gpsValid",
         v.gps_time AS "gpsTimestamp",
         TO_CHAR(v.recorded_at, 'YYYY-MM-DD HH24:MI:SS') AS "datetimeStr",
-        (v.recorded_at >= NOW() - INTERVAL '15 seconds') AS "deviceOnline"
+        v.recorded_at AS "recordedAt"
       FROM vitals v
       ORDER BY v.recorded_at DESC
       LIMIT 1
     `;
     const result = await db.query(sqlQuery);
     if (result.rows.length > 0) {
-      const isOnline = !!result.rows[0].deviceOnline;
+      const lastRecord = result.rows[0];
+      const recordedAt = new Date(lastRecord.recordedAt);
+      const diffMs = Date.now() - recordedAt.getTime();
+      const isOnline = diffMs <= 15000; // 15 seconds
       return NextResponse.json({
-        ...result.rows[0],
+        ...lastRecord,
         ecgLeadsOff: !isOnline,
         sdReady: isOnline,
         wifiConnected: isOnline,
