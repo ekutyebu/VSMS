@@ -36,8 +36,6 @@ void syncDatabase() {
         WiFiClientSecure clientSecure;
         
         if (serverUrl.startsWith("https://")) {
-            // Set smaller buffer sizes to prevent heap allocation failures during SSL handshake
-            clientSecure.setBufferSizes(8192, 1024);
             clientSecure.setInsecure(); // Bypass SSL certificate verification for HTTPS Render domain
             http.begin(clientSecure, serverUrl);
         } else {
