@@ -19,10 +19,13 @@ unsigned long lastSensorUpdateMs = 0;
 unsigned long lastLogMs = 0;
 
 // Central PostgreSQL database synchronization via Next.js REST API
+#include <WiFiClientSecure.h>
 void syncDatabase() {
     if (WiFi.status() == WL_CONNECTED) {
+        WiFiClientSecure client;
+        client.setInsecure(); // Bypass SSL certificate verification for Render HTTPS domain
         HTTPClient http;
-        http.begin(BACKEND_SERVER_URL);
+        http.begin(client, BACKEND_SERVER_URL);
         http.addHeader("Content-Type", "application/json");
         
         StaticJsonDocument<512> doc;
