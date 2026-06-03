@@ -164,6 +164,7 @@ void syncDatabase() {
             
             if (!connected) {
                 // Reinitialize client or reset certificate requirements
+                clientSecure.stop();
                 clientSecure.setInsecure();
                 clientSecure.setTimeout(4000);
                 if (clientSecure.connect(url.host.c_str(), url.port)) {
