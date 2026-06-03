@@ -35,6 +35,9 @@ void syncDatabase() {
         WiFiClient client;
         WiFiClientSecure clientSecure;
         
+        Serial.printf("[DB Sync] Syncing to URL: %s\n", serverUrl.c_str());
+        Serial.printf("[DB Sync] Free Heap: %u bytes, Max Alloc Block: %u bytes\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+        
         if (serverUrl.startsWith("https://")) {
             clientSecure.setInsecure(); // Bypass SSL certificate verification for HTTPS Render domain
             http.begin(clientSecure, serverUrl);
