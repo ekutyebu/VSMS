@@ -90,24 +90,153 @@ ParsedUrl parseUrl(String url) {
     return parsed;
 }
 
-void syncDatabase() {
-    if (WiFi.status() == WL_CONNECTED) {
-        String serverUrl = BACKEND_SERVER_URL;
-        String detectedIP = webServerManager.getDetectedServerIP();
+bool postTelemetry(const String& serverUrl, const String& jsonPayload) {
+    ParsedUrl url = parseUrl(serverUrl);
+    bool success = false;
+    String statusLine = "";
+    String responseBody = "";
+    
+    if (url.isHttps) {
+        bool connected = false;
+        WiFiClientSecure clientSecure;
+        clientSecure.setConnectTimeout(2000); // 2-second TCP connect timeout
+        clientSecure.setTimeout(3000);       // 3-second read/write timeout
         
-        // Auto-discovery: If a local dashboard client connects via WebSocket,
-        // sync database records locally to that machine's dev server port 3000.
-        if (detectedIP.length() > 0 && (serverUrl.indexOf("render.com") != -1 || serverUrl.indexOf("localhost") != -1)) {
-            serverUrl = "http://" + detectedIP + ":3000/api/vitals";
+        time_t now = time(nullptr);
+        if (now > 1000000000) { // If NTP time is synchronized (greater than year 2001)
+            clientSecure.setCACert(rootCACertificate);
+            Serial.printf("[DB Sync] Secure TLS: Attempting verified connection to %s\n", url.host.c_str());
+            if (clientSecure.connect(url.host.c_str(), url.port)) {
+                connected = true;
+                
+                // Send raw HTTP POST request
+                clientSecure.printf("POST %s HTTP/1.1\r\n", url.path.c_str());
+                clientSecure.printf("Host: %s\r\n", url.host.c_str());
+                clientSecure.println("User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                clientSecure.println("Content-Type: application/json");
+                clientSecure.printf("Content-Length: %d\r\n", jsonPayload.length());
+                clientSecure.println("Connection: close");
+                clientSecure.println();
+                clientSecure.print(jsonPayload);
+                
+                // Read HTTP status line
+                statusLine = clientSecure.readStringUntil('\n');
+                
+                // Read HTTP Headers response
+                long startTime = millis();
+                while (clientSecure.connected() && millis() - startTime < 3000) {
+                    String line = clientSecure.readStringUntil('\n');
+                    if (line == "\r" || line == "") {
+                        break;
+                    }
+                }
+                
+                // Read body
+                responseBody = clientSecure.readString();
+                success = true;
+                clientSecure.stop();
+            } else {
+                Serial.println("[DB Sync] Secure TLS: Root CA validation failed. Retrying with setInsecure()...");
+            }
         }
         
-        ParsedUrl url = parseUrl(serverUrl);
+        if (!connected) {
+            WiFiClientSecure clientInsecure;
+            clientInsecure.setInsecure();
+            clientInsecure.setConnectTimeout(2000); // 2-second TCP connect timeout
+            clientInsecure.setTimeout(3000);       // 3-second read/write timeout
+            Serial.printf("[DB Sync] Secure TLS: Attempting unverified connection to %s\n", url.host.c_str());
+            if (clientInsecure.connect(url.host.c_str(), url.port)) {
+                connected = true;
+                Serial.println("[DB Sync] Secure TLS: Connected using setInsecure() fallback.");
+                
+                // Send raw HTTP POST request
+                clientInsecure.printf("POST %s HTTP/1.1\r\n", url.path.c_str());
+                clientInsecure.printf("Host: %s\r\n", url.host.c_str());
+                clientInsecure.println("User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                clientInsecure.println("Content-Type: application/json");
+                clientInsecure.printf("Content-Length: %d\r\n", jsonPayload.length());
+                clientInsecure.println("Connection: close");
+                clientInsecure.println();
+                clientInsecure.print(jsonPayload);
+                
+                // Read HTTP status line
+                statusLine = clientInsecure.readStringUntil('\n');
+                
+                // Read HTTP Headers response
+                long startTime = millis();
+                while (clientInsecure.connected() && millis() - startTime < 3000) {
+                    String line = clientInsecure.readStringUntil('\n');
+                    if (line == "\r" || line == "") {
+                        break;
+                    }
+                }
+                
+                // Read body
+                responseBody = clientInsecure.readString();
+                success = true;
+                clientInsecure.stop();
+            }
+        }
         
+        if (!connected) {
+            Serial.printf("[DB Sync] Secure TCP connection to %s failed!\n", url.host.c_str());
+        }
+    } else {
+        WiFiClient client;
+        client.setConnectTimeout(2000); // 2-second TCP connect timeout
+        client.setTimeout(3000);       // 3-second read/write timeout
+        Serial.printf("[DB Sync] Plain HTTP: Attempting connection to %s\n", url.host.c_str());
+        
+        if (client.connect(url.host.c_str(), url.port)) {
+            // Send raw HTTP POST request
+            client.printf("POST %s HTTP/1.1\r\n", url.path.c_str());
+            client.printf("Host: %s\r\n", url.host.c_str());
+            client.println("User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            client.println("Content-Type: application/json");
+            client.printf("Content-Length: %d\r\n", jsonPayload.length());
+            client.println("Connection: close");
+            client.println();
+            client.print(jsonPayload);
+            
+            // Read HTTP status line
+            statusLine = client.readStringUntil('\n');
+            
+            // Read HTTP Headers response
+            long startTime = millis();
+            while (client.connected() && millis() - startTime < 3000) {
+                String line = client.readStringUntil('\n');
+                if (line == "\r" || line == "") {
+                    break;
+                }
+            }
+            
+            // Read body
+            responseBody = client.readString();
+            success = true;
+            client.stop();
+        } else {
+            Serial.printf("[DB Sync] Plain TCP connection to %s failed!\n", url.host.c_str());
+        }
+    }
+    
+    if (success) {
+        statusLine.replace("\r", "");
+        statusLine.replace("\n", "");
+        Serial.printf("[DB Sync] Success! Status: %s, Response: %s\n", statusLine.c_str(), responseBody.c_str());
+    } else {
+        Serial.printf("[DB Sync] Sync attempt to %s failed.\n", serverUrl.c_str());
+    }
+    
+    return success;
+}
+
+void syncDatabase() {
+    if (WiFi.status() == WL_CONNECTED) {
         // Print diagnostics
         time_t now = time(nullptr);
         struct tm timeinfo;
         gmtime_r(&now, &timeinfo);
-        Serial.printf("[DB Sync] Syncing to URL: %s\n", serverUrl.c_str());
         Serial.printf("[DB Sync] System Time (UTC): %04d-%02d-%02d %02d:%02d:%02d\n",
                       timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
                       timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
@@ -144,133 +273,19 @@ void syncDatabase() {
         String jsonPayload;
         serializeJson(doc, jsonPayload);
         
-        bool success = false;
-        String statusLine = "";
-        String responseBody = "";
+        // 1. Sync to hosted server
+        Serial.printf("[DB Sync] Destination 1: %s\n", HOSTED_SERVER_URL);
+        postTelemetry(HOSTED_SERVER_URL, jsonPayload);
         
-        if (url.isHttps) {
-            bool connected = false;
-            if (now > 1000000000) { // If NTP time is synchronized (greater than year 2001)
-                WiFiClientSecure clientSecure;
-                clientSecure.setCACert(rootCACertificate);
-                Serial.println("[DB Sync] Secure TLS: Using Let's Encrypt Root CA Certificate verification");
-                clientSecure.setTimeout(4000); // 4-second timeout
-                if (clientSecure.connect(url.host.c_str(), url.port)) {
-                    connected = true;
-                    // Send raw HTTP POST request
-                    clientSecure.printf("POST %s HTTP/1.1\r\n", url.path.c_str());
-                    clientSecure.printf("Host: %s\r\n", url.host.c_str());
-                    clientSecure.println("User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-                    clientSecure.println("Content-Type: application/json");
-                    clientSecure.printf("Content-Length: %d\r\n", jsonPayload.length());
-                    clientSecure.println("Connection: close");
-                    clientSecure.println();
-                    clientSecure.print(jsonPayload);
-                    
-                    // Read HTTP status line
-                    statusLine = clientSecure.readStringUntil('\n');
-                    
-                    // Read HTTP Headers response
-                    long startTime = millis();
-                    while (clientSecure.connected() && millis() - startTime < 4000) {
-                        String line = clientSecure.readStringUntil('\n');
-                        if (line == "\r" || line == "") {
-                            break;
-                        }
-                    }
-                    
-                    // Read body
-                    responseBody = clientSecure.readString();
-                    success = true;
-                    clientSecure.stop();
-                } else {
-                    Serial.println("[DB Sync] Secure TLS: Root CA validation failed. Retrying with setInsecure()...");
-                }
-            }
-            
-            if (!connected) {
-                WiFiClientSecure clientInsecure;
-                clientInsecure.setInsecure();
-                clientInsecure.setTimeout(4000);
-                if (clientInsecure.connect(url.host.c_str(), url.port)) {
-                    connected = true;
-                    Serial.println("[DB Sync] Secure TLS: Connected using setInsecure() fallback.");
-                    
-                    // Send raw HTTP POST request
-                    clientInsecure.printf("POST %s HTTP/1.1\r\n", url.path.c_str());
-                    clientInsecure.printf("Host: %s\r\n", url.host.c_str());
-                    clientInsecure.println("User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-                    clientInsecure.println("Content-Type: application/json");
-                    clientInsecure.printf("Content-Length: %d\r\n", jsonPayload.length());
-                    clientInsecure.println("Connection: close");
-                    clientInsecure.println();
-                    clientInsecure.print(jsonPayload);
-                    
-                    // Read HTTP status line
-                    statusLine = clientInsecure.readStringUntil('\n');
-                    
-                    // Read HTTP Headers response
-                    long startTime = millis();
-                    while (clientInsecure.connected() && millis() - startTime < 4000) {
-                        String line = clientInsecure.readStringUntil('\n');
-                        if (line == "\r" || line == "") {
-                            break;
-                        }
-                    }
-                    
-                    // Read body
-                    responseBody = clientInsecure.readString();
-                    success = true;
-                    clientInsecure.stop();
-                }
-            }
-            
-            if (!connected) {
-                Serial.println("[DB Sync] Secure TCP socket connection failed!");
-            }
-        } else {
-            WiFiClient client;
-            client.setTimeout(4000); // 4-second timeout
-            
-            if (client.connect(url.host.c_str(), url.port)) {
-                // Send raw HTTP POST request
-                client.printf("POST %s HTTP/1.1\r\n", url.path.c_str());
-                client.printf("Host: %s\r\n", url.host.c_str());
-                client.println("User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-                client.println("Content-Type: application/json");
-                client.printf("Content-Length: %d\r\n", jsonPayload.length());
-                client.println("Connection: close");
-                client.println();
-                client.print(jsonPayload);
-                
-                // Read HTTP status line
-                statusLine = client.readStringUntil('\n');
-                
-                // Read HTTP Headers response
-                long startTime = millis();
-                while (client.connected() && millis() - startTime < 4000) {
-                    String line = client.readStringUntil('\n');
-                    if (line == "\r" || line == "") {
-                        break;
-                    }
-                }
-                
-                // Read body
-                responseBody = client.readString();
-                success = true;
-                client.stop();
-            } else {
-                Serial.println("[DB Sync] TCP socket connection failed!");
-            }
+        // 2. Sync to local dev server (auto-discovered IP if client connected, otherwise default LOCAL_SERVER_URL)
+        String localIp = webServerManager.getDetectedServerIP();
+        String localUrl = LOCAL_SERVER_URL;
+        if (localIp.length() > 0) {
+            localUrl = "http://" + localIp + ":3000/api/vitals";
         }
+        Serial.printf("[DB Sync] Destination 2: %s\n", localUrl.c_str());
+        postTelemetry(localUrl, jsonPayload);
         
-        if (success) {
-            statusLine.replace("\r", "");
-            statusLine.replace("\n", "");
-            Serial.printf("[DB Sync] Success! Status: %s, Response: %s\n", statusLine.c_str(), responseBody.c_str());
-        } else {
-            Serial.println("[DB Sync] Sync attempt failed.");
-        }
     } else {
         Serial.println("[DB Sync] Offline (WiFi not connected). Saved locally on MicroSD card.");
     }

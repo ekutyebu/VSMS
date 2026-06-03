@@ -11,7 +11,8 @@
 #define WIFI_IS_AP false // Set to true to start as Access Point, false to connect to local router
 #define LOCAL_SSID "Javis"
 #define LOCAL_PASSWORD "1234567890"
-#define BACKEND_SERVER_URL "https://vsms-6z4c.onrender.com/api/vitals" // Next.js backend API vital logs endpoint
+#define HOSTED_SERVER_URL "https://vsms-6z4c.onrender.com/api/vitals" // Render hosted Next.js production endpoint
+#define LOCAL_SERVER_URL "http://10.134.242.1:3000/api/vitals"       // Local dev server on your laptop
 #define SYNC_INTERVAL_MS 5000                                // POST logs to PostgreSQL database every 5 seconds
 
 // ==========================================
