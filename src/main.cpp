@@ -228,63 +228,118 @@ bool postTelemetry(const String& serverUrl, const String& jsonPayload) {
     return success;
 }
 
-void syncDatabase() {
-    if (WiFi.status() == WL_CONNECTED) {
-        // Print diagnostics
-        time_t now = time(nullptr);
-        struct tm timeinfo;
-        gmtime_r(&now, &timeinfo);
-        Serial.printf("[DB Sync] System Time (UTC): %04d-%02d-%02d %02d:%02d:%02d\n",
-                      timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
-                      timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-        Serial.printf("[DB Sync] Free Heap: %u bytes, Max Alloc Block: %u bytes\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+struct SyncPayload {
+    float heartRate;
+    float spo2;
+    float tempC;
+    int bpSystolic;
+    int bpDiastolic;
+    char ecgStatus[16];
+    double gpsLatitude;
+    double gpsLongitude;
+    char gpsTimestamp[16];
+    bool gpsValid;
+    char localUrl[128];
+};
+
+SyncPayload nextSyncPayload;
+SemaphoreHandle_t syncSemaphore = NULL;
+SemaphoreHandle_t syncMutex = NULL;
+
+void dbSyncTask(void *pvParameters) {
+    while (true) {
+        // Block until loop() triggers a sync
+        if (xSemaphoreTake(syncSemaphore, portMAX_DELAY) == pdTRUE) {
+            SyncPayload payload;
+            
+            // Safe copy of the payload
+            if (xSemaphoreTake(syncMutex, portMAX_DELAY) == pdTRUE) {
+                payload = nextSyncPayload;
+                xSemaphoreGive(syncMutex);
+            }
+            
+            // Now perform HTTP sync using the copied payload (outside the mutex)
+            if (WiFi.status() == WL_CONNECTED) {
+                // Print diagnostics
+                time_t now = time(nullptr);
+                struct tm timeinfo;
+                gmtime_r(&now, &timeinfo);
+                Serial.printf("[DB Sync] System Time (UTC): %04d-%02d-%02d %02d:%02d:%02d\n",
+                              timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                              timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+                Serial.printf("[DB Sync] Free Heap: %u bytes, Max Alloc Block: %u bytes\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+                
+                StaticJsonDocument<512> doc;
+                doc["patientId"] = "PT-2026-9841";
+                doc["heartRate"] = payload.heartRate;
+                doc["spo2"] = payload.spo2;
+                doc["tempC"] = payload.tempC;
+                doc["bpSystolic"] = payload.bpSystolic;
+                doc["bpDiastolic"] = payload.bpDiastolic;
+                doc["ecgStatus"] = payload.ecgStatus;
+                
+                if (payload.gpsValid) {
+                    doc["latitude"] = payload.gpsLatitude;
+                    doc["longitude"] = payload.gpsLongitude;
+                    doc["gpsTimestamp"] = payload.gpsTimestamp;
+                }
+                
+                String jsonPayload;
+                serializeJson(doc, jsonPayload);
+                
+                // 1. Sync to hosted server
+                Serial.printf("[DB Sync] Destination 1: %s\n", HOSTED_SERVER_URL);
+                postTelemetry(HOSTED_SERVER_URL, jsonPayload);
+                
+                // 2. Sync to local dev server (auto-discovered IP if client connected, otherwise default LOCAL_SERVER_URL)
+                Serial.printf("[DB Sync] Destination 2: %s\n", payload.localUrl);
+                postTelemetry(payload.localUrl, jsonPayload);
+            } else {
+                Serial.println("[DB Sync] Offline (WiFi not connected). Saved locally on MicroSD card.");
+            }
+        }
+    }
+}
+
+void triggerDatabaseSync(const SensorData& d, AlertLevel alert) {
+    if (syncMutex == NULL || syncSemaphore == NULL) return;
+    
+    if (xSemaphoreTake(syncMutex, 0) == pdTRUE) {
+        nextSyncPayload.heartRate = d.heartRate;
+        nextSyncPayload.spo2 = d.spo2;
+        nextSyncPayload.tempC = d.tempC;
+        nextSyncPayload.bpSystolic = d.bpSystolic;
+        nextSyncPayload.bpDiastolic = d.bpDiastolic;
         
-        StaticJsonDocument<512> doc;
-        const SensorData& d = sensorManager.getData();
-        
-        // Populate JSON telemetry packet
-        doc["patientId"] = "PT-2026-9841"; // Default patient MRN
-        doc["heartRate"] = d.heartRate;
-        doc["spo2"] = d.spo2;
-        doc["tempC"] = d.tempC;
-        doc["bpSystolic"] = d.bpSystolic;
-        doc["bpDiastolic"] = d.bpDiastolic;
-        
-        // Resolve status string
         String statusStr = "Normal";
-        AlertLevel alert = alertManager.getAlertLevel();
         if (alert == STATUS_WARNING) {
             statusStr = "Warning";
         } else if (alert == STATUS_CRITICAL) {
             statusStr = "Critical";
         }
-        doc["ecgStatus"] = statusStr;
+        strncpy(nextSyncPayload.ecgStatus, statusStr.c_str(), sizeof(nextSyncPayload.ecgStatus) - 1);
+        nextSyncPayload.ecgStatus[sizeof(nextSyncPayload.ecgStatus) - 1] = '\0';
         
-        // Add GPS coordinates if valid
-        if (d.gpsValid) {
-            doc["latitude"] = d.gpsLatitude;
-            doc["longitude"] = d.gpsLongitude;
-            doc["gpsTimestamp"] = d.gpsTimestamp;
-        }
+        nextSyncPayload.gpsLatitude = d.gpsLatitude;
+        nextSyncPayload.gpsLongitude = d.gpsLongitude;
+        nextSyncPayload.gpsValid = d.gpsValid;
         
-        String jsonPayload;
-        serializeJson(doc, jsonPayload);
+        strncpy(nextSyncPayload.gpsTimestamp, d.gpsTimestamp.c_str(), sizeof(nextSyncPayload.gpsTimestamp) - 1);
+        nextSyncPayload.gpsTimestamp[sizeof(nextSyncPayload.gpsTimestamp) - 1] = '\0';
         
-        // 1. Sync to hosted server
-        Serial.printf("[DB Sync] Destination 1: %s\n", HOSTED_SERVER_URL);
-        postTelemetry(HOSTED_SERVER_URL, jsonPayload);
-        
-        // 2. Sync to local dev server (auto-discovered IP if client connected, otherwise default LOCAL_SERVER_URL)
+        // Resolve local URL using detected server IP
         String localIp = webServerManager.getDetectedServerIP();
         String localUrl = LOCAL_SERVER_URL;
         if (localIp.length() > 0) {
             localUrl = "http://" + localIp + ":3000/api/vitals";
         }
-        Serial.printf("[DB Sync] Destination 2: %s\n", localUrl.c_str());
-        postTelemetry(localUrl, jsonPayload);
+        strncpy(nextSyncPayload.localUrl, localUrl.c_str(), sizeof(nextSyncPayload.localUrl) - 1);
+        nextSyncPayload.localUrl[sizeof(nextSyncPayload.localUrl) - 1] = '\0';
         
+        xSemaphoreGive(syncMutex);
+        xSemaphoreGive(syncSemaphore); // Wake up background task
     } else {
-        Serial.println("[DB Sync] Offline (WiFi not connected). Saved locally on MicroSD card.");
+        Serial.println("[DB Sync] Warning: Previous sync still active, skipping this interval.");
     }
 }
 
@@ -310,6 +365,21 @@ void setup() {
 
     // Initialize HTTP and WebSocket servers
     webServerManager.begin(&storageManager, &sensorManager);
+
+    // Initialize Synchronization Semaphore and Mutex
+    syncSemaphore = xSemaphoreCreateBinary();
+    syncMutex = xSemaphoreCreateMutex();
+
+    // Spawn background database sync task on Core 0 (priority 1, stack size 8192)
+    xTaskCreatePinnedToCore(
+        dbSyncTask,
+        "dbSyncTask",
+        8192,
+        NULL,
+        1,
+        NULL,
+        0
+    );
 
     Serial.println("[System] Initialization complete. Running loops.");
     Serial.println("=================================================");
@@ -354,7 +424,7 @@ void loop() {
         // Local log
         storageManager.logData(sensorManager.getData(), alertManager.getAlertLevel());
         
-        // DB Sync
-        syncDatabase();
+        // Trigger non-blocking database sync on Core 0
+        triggerDatabaseSync(sensorManager.getData(), alertManager.getAlertLevel());
     }
 }
