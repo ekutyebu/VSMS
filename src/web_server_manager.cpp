@@ -8,7 +8,8 @@ WebServerManager::WebServerManager()
       sensors(nullptr),
       wifiConnected(false),
       lastBroadcastMs(0),
-      ecgBufferIdx(0)
+      ecgBufferIdx(0),
+      detectedServerIP("")
 {
     memset(ecgBuffer, 0, sizeof(ecgBuffer));
 }
@@ -39,6 +40,9 @@ bool WebServerManager::begin(StorageManager* storageMgr, SensorManager* sensorMg
         if (WiFi.status() == WL_CONNECTED) {
             wifiConnected = true;
             Serial.printf("\n[WebServerManager] Connected to Wi-Fi. IP: %s\n", WiFi.localIP().toString().c_str());
+            // Sync time with NTP server for secure SSL/TLS handshakes
+            configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+            Serial.println("[WebServerManager] NTP Time Sync configured.");
         } else {
             Serial.println("\n[WebServerManager] Wi-Fi connection failed. Falling back to AP mode...");
             WiFi.softAP(WIFI_SSID, WIFI_PASSWORD);
@@ -153,6 +157,7 @@ void WebServerManager::setupWebSocket() {
         switch (type) {
             case WS_EVT_CONNECT:
                 Serial.printf("[WebSocket] Client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
+                detectedServerIP = client->remoteIP().toString();
                 break;
             case WS_EVT_DISCONNECT:
                 Serial.printf("[WebSocket] Client #%u disconnected\n", client->id());

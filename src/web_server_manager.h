@@ -16,6 +16,7 @@ public:
     void update(AlertLevel activeAlertLevel);
     void pushEcgSample(int ecgVal);
     bool isWifiConnected() const { return wifiConnected; }
+    String getDetectedServerIP() const { return detectedServerIP; }
 
 private:
     AsyncWebServer server;
@@ -26,6 +27,8 @@ private:
     
     bool wifiConnected;
     unsigned long lastBroadcastMs;
+    
+    String detectedServerIP;
     
     // ECG Buffer for 1-second WebSocket batch transmission
     int ecgBuffer[60];

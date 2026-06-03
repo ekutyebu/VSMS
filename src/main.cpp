@@ -22,11 +22,29 @@ unsigned long lastLogMs = 0;
 #include <WiFiClientSecure.h>
 void syncDatabase() {
     if (WiFi.status() == WL_CONNECTED) {
-        WiFiClientSecure client;
-        client.setInsecure(); // Bypass SSL certificate verification for Render HTTPS domain
-        client.setBufferSizes(2048, 1024); // Reduce SSL buffer sizes to save RAM and prevent handshake heap allocation failures
+        String serverUrl = BACKEND_SERVER_URL;
+        String detectedIP = webServerManager.getDetectedServerIP();
+        
+        // Auto-discovery: If a local dashboard client connects via WebSocket,
+        // sync database records locally to that machine's dev server port 3000.
+        if (detectedIP.length() > 0 && (serverUrl.indexOf("render.com") != -1 || serverUrl.indexOf("localhost") != -1)) {
+            serverUrl = "http://" + detectedIP + ":3000/api/vitals";
+        }
+        
         HTTPClient http;
-        http.begin(client, BACKEND_SERVER_URL);
+        WiFiClient client;
+        WiFiClientSecure clientSecure;
+        
+        if (serverUrl.startsWith("https://")) {
+            // Set smaller buffer sizes to prevent heap allocation failures during SSL handshake
+            clientSecure.setBufferSizes(8192, 1024);
+            clientSecure.setInsecure(); // Bypass SSL certificate verification for HTTPS Render domain
+            http.begin(clientSecure, serverUrl);
+        } else {
+            http.begin(client, serverUrl);
+        }
+        
+        http.setTimeout(4000); // Prevent blocking the main loop for too long if the server is slow/offline
         http.addHeader("Content-Type", "application/json");
         
         StaticJsonDocument<512> doc;
