@@ -107,18 +107,21 @@ export async function GET() {
         v.longitude AS "gpsLongitude",
         CASE WHEN v.latitude IS NOT NULL AND v.longitude IS NOT NULL THEN true ELSE false END AS "gpsValid",
         v.gps_time AS "gpsTimestamp",
-        TO_CHAR(v.recorded_at, 'YYYY-MM-DD HH24:MI:SS') AS "datetimeStr"
+        TO_CHAR(v.recorded_at, 'YYYY-MM-DD HH24:MI:SS') AS "datetimeStr",
+        (v.recorded_at >= NOW() - INTERVAL '15 seconds') AS "deviceOnline"
       FROM vitals v
       ORDER BY v.recorded_at DESC
       LIMIT 1
     `;
     const result = await db.query(sqlQuery);
     if (result.rows.length > 0) {
+      const isOnline = !!result.rows[0].deviceOnline;
       return NextResponse.json({
         ...result.rows[0],
-        ecgLeadsOff: false,
-        sdReady: true,
-        wifiConnected: true
+        ecgLeadsOff: !isOnline,
+        sdReady: isOnline,
+        wifiConnected: isOnline,
+        deviceOnline: isOnline
       });
     } else {
       return NextResponse.json({
@@ -137,7 +140,8 @@ export async function GET() {
         datetimeStr: '',
         ecgLeadsOff: true,
         sdReady: true,
-        wifiConnected: true
+        wifiConnected: false,
+        deviceOnline: false
       });
     }
   } catch (err) {

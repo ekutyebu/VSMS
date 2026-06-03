@@ -675,6 +675,9 @@ export default function Dashboard() {
       wsRef.current.send(JSON.stringify({ resetStats: true }));
     }
   };
+
+  const isOnline = wsConnected || telemetry.deviceOnline;
+
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-bgMain text-text-primary overflow-x-hidden">
       
@@ -799,9 +802,13 @@ export default function Dashboard() {
               <i className={`fa-solid ${telemetry.systemAlertLevel === 2 ? 'fa-triangle-exclamation animate-pulse' : 'fa-shield-heart'}`}></i>
               <span>{telemetry.systemAlertLevel === 2 ? 'CRITICAL ALARM' : telemetry.systemAlertLevel === 1 ? 'WARNING STATE' : 'SYSTEM NORMAL'}</span>
             </div>
-            <div className="flex items-center gap-2 bg-bgSidebar border border-border-color px-4 py-2 rounded-lg text-xs font-semibold text-colorBlue">
-              <i className="fa-solid fa-wifi"></i>
-              <span>{telemetry.wifiConnected ? 'Device Connected' : 'ESP32 AP Active'}</span>
+            <div className={`flex items-center gap-2 bg-bgSidebar border border-border-color px-4 py-2 rounded-lg text-xs font-semibold ${
+              isOnline ? (wsConnected && !telemetry.wifiConnected ? 'text-colorBlue' : 'text-colorNormal') : 'text-text-muted'
+            }`}>
+              <i className={`fa-solid fa-wifi ${!isOnline ? 'opacity-55' : ''}`}></i>
+              <span>
+                {isOnline ? (wsConnected && !telemetry.wifiConnected ? 'ESP32 AP Active' : 'Device Online') : 'Device Offline'}
+              </span>
             </div>
             <div className="flex items-center gap-2 bg-bgSidebar border border-border-color px-4 py-2 rounded-lg text-xs font-semibold text-text-primary">
               <i className={`fa-solid fa-sd-card ${telemetry.sdReady ? 'text-colorNormal' : 'text-text-muted'}`}></i>
@@ -895,35 +902,43 @@ export default function Dashboard() {
               </div>
 
               {/* Vitals overview row */}
-              <div className="bg-bgCard backdrop-blur border border-border-color rounded-2xl p-6 shadow-xl flex items-center justify-between gap-4">
+              <div className={`bg-bgCard backdrop-blur border border-border-color rounded-2xl p-6 shadow-xl flex items-center justify-between gap-4 transition-all ${!isOnline ? 'opacity-65 saturate-50' : ''}`}>
                 <div className="flex items-center gap-4">
                   <i className="fa-solid fa-heartbeat text-colorCritical text-2xl animate-pulse"></i>
                   <div>
-                    <span className="text-xs text-text-secondary">Pulse Rate</span>
+                    <span className="text-xs text-text-secondary flex items-center gap-1.5">
+                      Pulse Rate {!isOnline && <span className="px-1.5 py-0.2 text-[8px] bg-white/10 text-text-muted rounded uppercase font-bold">Cached</span>}
+                    </span>
                     <h2 className="text-2xl font-bold mt-0.5">{telemetry.heartRate ? Math.round(telemetry.heartRate) : '--'} <span className="text-xs text-text-muted font-medium">BPM</span></h2>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <i className="fa-solid fa-droplet text-colorBlue text-2xl"></i>
                   <div>
-                    <span className="text-xs text-text-secondary">SpO2</span>
+                    <span className="text-xs text-text-secondary flex items-center gap-1.5">
+                      SpO2 {!isOnline && <span className="px-1.5 py-0.2 text-[8px] bg-white/10 text-text-muted rounded uppercase font-bold">Cached</span>}
+                    </span>
                     <h2 className="text-2xl font-bold mt-0.5">{telemetry.spo2 ? Math.round(telemetry.spo2) : '--'} <span className="text-xs text-text-muted font-medium">%</span></h2>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-bgCard backdrop-blur border border-border-color rounded-2xl p-6 shadow-xl flex items-center justify-between gap-4">
+              <div className={`bg-bgCard backdrop-blur border border-border-color rounded-2xl p-6 shadow-xl flex items-center justify-between gap-4 transition-all ${!isOnline ? 'opacity-65 saturate-50' : ''}`}>
                 <div className="flex items-center gap-4">
                   <i className="fa-solid fa-thermometer-half text-colorWarning text-2xl"></i>
                   <div>
-                    <span className="text-xs text-text-secondary">Body Temp</span>
+                    <span className="text-xs text-text-secondary flex items-center gap-1.5">
+                      Body Temp {!isOnline && <span className="px-1.5 py-0.2 text-[8px] bg-white/10 text-text-muted rounded uppercase font-bold">Cached</span>}
+                    </span>
                     <h2 className="text-2xl font-bold mt-0.5">{telemetry.tempC ? telemetry.tempC.toFixed(1) : '--'} <span className="text-xs text-text-muted font-medium">°C</span></h2>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <i className="fa-solid fa-gauge-simple-high text-colorNormal text-2xl"></i>
                   <div>
-                    <span className="text-xs text-text-secondary">BP Pressure</span>
+                    <span className="text-xs text-text-secondary flex items-center gap-1.5">
+                      BP Pressure {!isOnline && <span className="px-1.5 py-0.2 text-[8px] bg-white/10 text-text-muted rounded uppercase font-bold">Cached</span>}
+                    </span>
                     <h2 className="text-lg font-bold mt-1">{telemetry.bpSystolic}/{telemetry.bpDiastolic} <span className="text-[10px] text-text-muted font-normal block">mmHg</span></h2>
                   </div>
                 </div>
@@ -988,13 +1003,13 @@ export default function Dashboard() {
 
                 {/* WiFi Mode status */}
                 <div className="flex items-center gap-3 bg-slate-900/40 p-3.5 rounded-xl border border-border-color">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-colorBlue/10 text-colorBlue">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isOnline ? 'bg-colorBlue/10 text-colorBlue' : 'bg-gray-500/10 text-gray-500'}`}>
                     <i className="fa-solid fa-wifi text-base"></i>
                   </div>
                   <div>
                     <span className="text-[10px] text-text-muted font-bold block uppercase tracking-wider">ESP32 WiFi Mode</span>
-                    <strong className="text-text-primary">
-                      {telemetry.wifiConnected ? 'STA Client Mode' : 'Access Point Mode'}
+                    <strong className={isOnline ? 'text-text-primary' : 'text-text-muted'}>
+                      {isOnline ? (telemetry.wifiConnected ? 'STA Client Mode' : 'Access Point Mode') : 'Offline'}
                     </strong>
                   </div>
                 </div>
@@ -1012,13 +1027,13 @@ export default function Dashboard() {
 
                 {/* Local Backup storage status */}
                 <div className="flex items-center gap-3 bg-slate-900/40 p-3.5 rounded-xl border border-border-color">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${telemetry.sdReady ? 'bg-colorNormal/10 text-colorNormal' : 'bg-colorCritical/10 text-colorCritical'}`}>
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isOnline && telemetry.sdReady ? 'bg-colorNormal/10 text-colorNormal' : 'bg-gray-500/10 text-gray-500'}`}>
                     <i className="fa-solid fa-sd-card text-base"></i>
                   </div>
                   <div>
                     <span className="text-[10px] text-text-muted font-bold block uppercase tracking-wider">Backup Local SD</span>
-                    <strong className={telemetry.sdReady ? 'text-colorNormal' : 'text-colorCritical'}>
-                      {telemetry.sdReady ? 'Ready (Logging)' : 'Card Offline / Error'}
+                    <strong className={isOnline && telemetry.sdReady ? 'text-colorNormal' : 'text-text-muted'}>
+                      {isOnline ? (telemetry.sdReady ? 'Ready (Logging)' : 'Card Offline / Error') : 'Device Offline'}
                     </strong>
                   </div>
                 </div>
@@ -1145,17 +1160,20 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             {/* HR */}
-            <div className={`bg-bgCard border border-border-color rounded-2xl p-6 shadow-xl flex flex-col h-[320px] ${
-              telemetry.systemAlertLevel === 2 && (telemetry.heartRate < 50 || telemetry.heartRate > 120) ? 'card-glow-red' : 
-              telemetry.systemAlertLevel === 1 && (telemetry.heartRate < 60 || telemetry.heartRate > 100) ? 'card-glow-yellow' : ''
+            <div className={`bg-bgCard border border-border-color rounded-2xl p-6 shadow-xl flex flex-col h-[320px] transition-all ${
+              !isOnline ? 'opacity-65 saturate-50' : ''
+            } ${
+              isOnline && telemetry.systemAlertLevel === 2 && (telemetry.heartRate < 50 || telemetry.heartRate > 120) ? 'card-glow-red' : 
+              isOnline && telemetry.systemAlertLevel === 1 && (telemetry.heartRate < 60 || telemetry.heartRate > 100) ? 'card-glow-yellow' : ''
             }`}>
               <div className="flex justify-between items-center mb-2">
-                <span className="font-semibold text-sm flex items-center gap-2 text-text-secondary"><i className="fa-solid fa-heartbeat text-colorCritical animate-pulse"></i> Heart Rate</span>
+                <span className="font-semibold text-sm flex items-center gap-2 text-text-secondary"><i className="fa-solid fa-heartbeat text-colorCritical animate-pulse"></i> Heart Rate {!isOnline && <span className="px-1.5 py-0.5 text-[8px] bg-white/10 text-text-muted rounded uppercase font-bold">Cached</span>}</span>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                  !isOnline ? 'bg-gray-500/15 text-text-muted' :
                   (telemetry.heartRate < 50 || telemetry.heartRate > 120) ? 'bg-colorCritical/15 text-colorCritical' : 
                   (telemetry.heartRate < 60 || telemetry.heartRate > 100) ? 'bg-colorWarning/15 text-colorWarning' : 'bg-colorNormal/15 text-colorNormal'
                 }`}>
-                  {(telemetry.heartRate < 50 || telemetry.heartRate > 120) ? 'Critical' : (telemetry.heartRate < 60 || telemetry.heartRate > 100) ? 'Warning' : 'Normal'}
+                  {!isOnline ? 'Offline' : ((telemetry.heartRate < 50 || telemetry.heartRate > 120) ? 'Critical' : (telemetry.heartRate < 60 || telemetry.heartRate > 100) ? 'Warning' : 'Normal')}
                 </span>
               </div>
               <div className="my-2">
@@ -1173,17 +1191,20 @@ export default function Dashboard() {
             </div>
 
             {/* SpO2 */}
-            <div className={`bg-bgCard border border-border-color rounded-2xl p-6 shadow-xl flex flex-col h-[320px] ${
-              telemetry.systemAlertLevel === 2 && telemetry.spo2 < 90 ? 'card-glow-red' : 
-              telemetry.systemAlertLevel === 1 && telemetry.spo2 < 95 ? 'card-glow-yellow' : ''
+            <div className={`bg-bgCard border border-border-color rounded-2xl p-6 shadow-xl flex flex-col h-[320px] transition-all ${
+              !isOnline ? 'opacity-65 saturate-50' : ''
+            } ${
+              isOnline && telemetry.systemAlertLevel === 2 && telemetry.spo2 < 90 ? 'card-glow-red' : 
+              isOnline && telemetry.systemAlertLevel === 1 && telemetry.spo2 < 95 ? 'card-glow-yellow' : ''
             }`}>
               <div className="flex justify-between items-center mb-2">
-                <span className="font-semibold text-sm flex items-center gap-2 text-text-secondary"><i className="fa-solid fa-droplet text-colorBlue"></i> Blood Oxygen (SpO2)</span>
+                <span className="font-semibold text-sm flex items-center gap-2 text-text-secondary"><i className="fa-solid fa-droplet text-colorBlue"></i> Blood Oxygen (SpO2) {!isOnline && <span className="px-1.5 py-0.5 text-[8px] bg-white/10 text-text-muted rounded uppercase font-bold">Cached</span>}</span>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                  !isOnline ? 'bg-gray-500/15 text-text-muted' :
                   telemetry.spo2 < 90 ? 'bg-colorCritical/15 text-colorCritical' : 
                   telemetry.spo2 < 95 ? 'bg-colorWarning/15 text-colorWarning' : 'bg-colorNormal/15 text-colorNormal'
                 }`}>
-                  {telemetry.spo2 < 90 ? 'Hypoxia' : telemetry.spo2 < 95 ? 'Warning' : 'Normal'}
+                  {!isOnline ? 'Offline' : (telemetry.spo2 < 90 ? 'Hypoxia' : telemetry.spo2 < 95 ? 'Warning' : 'Normal')}
                 </span>
               </div>
               <div className="my-2">
@@ -1197,17 +1218,20 @@ export default function Dashboard() {
             </div>
 
             {/* Temperature */}
-            <div className={`bg-bgCard border border-border-color rounded-2xl p-6 shadow-xl flex flex-col h-[320px] ${
-              telemetry.systemAlertLevel === 2 && telemetry.tempC > 38.5 ? 'card-glow-red' : 
-              telemetry.systemAlertLevel === 1 && telemetry.tempC > 37.5 ? 'card-glow-yellow' : ''
+            <div className={`bg-bgCard border border-border-color rounded-2xl p-6 shadow-xl flex flex-col h-[320px] transition-all ${
+              !isOnline ? 'opacity-65 saturate-50' : ''
+            } ${
+              isOnline && telemetry.tempC > 38.5 ? 'card-glow-red' : 
+              isOnline && telemetry.tempC > 37.5 ? 'card-glow-yellow' : ''
             }`}>
               <div className="flex justify-between items-center mb-2">
-                <span className="font-semibold text-sm flex items-center gap-2 text-text-secondary"><i className="fa-solid fa-thermometer-half text-colorWarning"></i> Temperature</span>
+                <span className="font-semibold text-sm flex items-center gap-2 text-text-secondary"><i className="fa-solid fa-thermometer-half text-colorWarning"></i> Temperature {!isOnline && <span className="px-1.5 py-0.5 text-[8px] bg-white/10 text-text-muted rounded uppercase font-bold">Cached</span>}</span>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                  !isOnline ? 'bg-gray-500/15 text-text-muted' :
                   telemetry.tempC > 38.5 ? 'bg-colorCritical/15 text-colorCritical' : 
                   telemetry.tempC > 37.5 ? 'bg-colorWarning/15 text-colorWarning' : 'bg-colorNormal/15 text-colorNormal'
                 }`}>
-                  {telemetry.tempC > 38.5 ? 'Fever' : telemetry.tempC > 37.5 ? 'Feverish' : 'Normal'}
+                  {!isOnline ? 'Offline' : (telemetry.tempC > 38.5 ? 'Fever' : telemetry.tempC > 37.5 ? 'Feverish' : 'Normal')}
                 </span>
               </div>
               <div className="my-2">
@@ -1221,17 +1245,20 @@ export default function Dashboard() {
             </div>
 
             {/* BP */}
-            <div className={`bg-bgCard border border-border-color rounded-2xl p-6 shadow-xl flex flex-col h-[320px] ${
-              telemetry.systemAlertLevel === 2 && (telemetry.bpSystolic >= 180 || telemetry.bpDiastolic >= 120) ? 'card-glow-red' : 
-              telemetry.systemAlertLevel === 1 && (telemetry.bpSystolic >= 140 || telemetry.bpDiastolic >= 90) ? 'card-glow-yellow' : ''
+            <div className={`bg-bgCard border border-border-color rounded-2xl p-6 shadow-xl flex flex-col h-[320px] transition-all ${
+              !isOnline ? 'opacity-65 saturate-50' : ''
+            } ${
+              isOnline && telemetry.systemAlertLevel === 2 && (telemetry.bpSystolic >= 180 || telemetry.bpDiastolic >= 120) ? 'card-glow-red' : 
+              isOnline && telemetry.systemAlertLevel === 1 && (telemetry.bpSystolic >= 140 || telemetry.bpDiastolic >= 90) ? 'card-glow-yellow' : ''
             }`}>
               <div className="flex justify-between items-center mb-2">
-                <span className="font-semibold text-sm flex items-center gap-2 text-text-secondary"><i className="fa-solid fa-gauge-simple-high text-colorNormal"></i> Blood Pressure</span>
+                <span className="font-semibold text-sm flex items-center gap-2 text-text-secondary"><i className="fa-solid fa-gauge-simple-high text-colorNormal"></i> Blood Pressure {!isOnline && <span className="px-1.5 py-0.5 text-[8px] bg-white/10 text-text-muted rounded uppercase font-bold">Cached</span>}</span>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                  !isOnline ? 'bg-gray-500/15 text-text-muted' :
                   (telemetry.bpSystolic >= 180 || telemetry.bpDiastolic >= 120) ? 'bg-colorCritical/15 text-colorCritical' : 
                   (telemetry.bpSystolic >= 140 || telemetry.bpDiastolic >= 90) ? 'bg-colorWarning/15 text-colorWarning' : 'bg-colorNormal/15 text-colorNormal'
                 }`}>
-                  {(telemetry.bpSystolic >= 180 || telemetry.bpDiastolic >= 120) ? 'Hypertensive' : (telemetry.bpSystolic >= 140 || telemetry.bpDiastolic >= 90) ? 'Borderline' : 'Normal'}
+                  {!isOnline ? 'Offline' : ((telemetry.bpSystolic >= 180 || telemetry.bpDiastolic >= 120) ? 'Hypertensive' : (telemetry.bpSystolic >= 140 || telemetry.bpDiastolic >= 90) ? 'Borderline' : 'Normal')}
                 </span>
               </div>
               <div className="my-2">
@@ -1252,14 +1279,16 @@ export default function Dashboard() {
 
         {/* 4. LARGE ECG MONITOR */}
         {activeTab === 'ecg' && (
-          <div className="bg-bgCard border border-border-color rounded-2xl p-6 shadow-xl">
+          <div className={`bg-bgCard border border-border-color rounded-2xl p-6 shadow-xl transition-all ${!isOnline ? 'opacity-65 saturate-50' : ''}`}>
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-[1.05rem] font-bold flex items-center gap-2 text-text-primary"><i className="fa-solid fa-wave-square text-colorCritical animate-pulse"></i> Real-time Electrocardiogram (ECG)</h3>
+              <h3 className="text-[1.05rem] font-bold flex items-center gap-2 text-text-primary">
+                <i className="fa-solid fa-wave-square text-colorCritical animate-pulse"></i> Real-time Electrocardiogram (ECG) {!isOnline && <span className="px-1.5 py-0.5 text-[8px] bg-white/10 text-text-muted rounded uppercase font-bold">Cached</span>}
+              </h3>
               <div className="flex items-center gap-3">
-                <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${telemetry.ecgLeadsOff ? 'bg-colorCritical/10 text-colorCritical' : 'bg-colorNormal/10 text-colorNormal'}`}>
-                  Leads: {telemetry.ecgLeadsOff ? 'OFF / DETACHED' : 'CONNECTED'}
+                <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${!isOnline ? 'bg-gray-500/10 text-text-muted' : (telemetry.ecgLeadsOff ? 'bg-colorCritical/10 text-colorCritical' : 'bg-colorNormal/10 text-colorNormal')}`}>
+                  {!isOnline ? 'Device Offline' : (telemetry.ecgLeadsOff ? 'Leads: OFF / DETACHED' : 'Leads: CONNECTED')}
                 </span>
-                <button onClick={resetECGDisplay} className="px-3.5 py-1.5 text-xs bg-slate-900 border border-border-color hover:bg-slate-800 transition-all font-semibold rounded-lg text-white">
+                <button onClick={resetECGDisplay} disabled={!isOnline} className="px-3.5 py-1.5 text-xs bg-slate-900 border border-border-color hover:bg-slate-800 disabled:opacity-50 transition-all font-semibold rounded-lg text-white">
                   Reset Trace
                 </button>
               </div>
