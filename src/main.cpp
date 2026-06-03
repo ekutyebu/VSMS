@@ -99,8 +99,7 @@ bool postTelemetry(const String& serverUrl, const String& jsonPayload) {
     if (url.isHttps) {
         bool connected = false;
         WiFiClientSecure clientSecure;
-        clientSecure.setConnectTimeout(10000); // 10-second TCP connect/TLS timeout
-        clientSecure.setTimeout(5000);        // 5-second read/write timeout
+        clientSecure.setTimeout(10000);        // 10-second timeout
         
         time_t now = time(nullptr);
         if (now > 1000000000) { // If NTP time is synchronized (greater than year 2001)
@@ -143,8 +142,7 @@ bool postTelemetry(const String& serverUrl, const String& jsonPayload) {
         if (!connected) {
             WiFiClientSecure clientInsecure;
             clientInsecure.setInsecure();
-            clientInsecure.setConnectTimeout(10000); // 10-second TCP connect/TLS timeout
-            clientInsecure.setTimeout(5000);        // 5-second read/write timeout
+            clientInsecure.setTimeout(10000);        // 10-second timeout
             Serial.printf("[DB Sync] Secure TLS: Attempting unverified connection to %s\n", url.host.c_str());
             if (clientInsecure.connect(url.host.c_str(), url.port)) {
                 connected = true;
@@ -184,8 +182,7 @@ bool postTelemetry(const String& serverUrl, const String& jsonPayload) {
         }
     } else {
         WiFiClient client;
-        client.setConnectTimeout(2000); // 2-second TCP connect timeout
-        client.setTimeout(3000);       // 3-second read/write timeout
+        client.setTimeout(5000);       // 5-second timeout
         Serial.printf("[DB Sync] Plain HTTP: Attempting connection to %s\n", url.host.c_str());
         
         if (client.connect(url.host.c_str(), url.port)) {
