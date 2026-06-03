@@ -107,7 +107,7 @@ export async function GET() {
         v.longitude AS "gpsLongitude",
         CASE WHEN v.latitude IS NOT NULL AND v.longitude IS NOT NULL THEN true ELSE false END AS "gpsValid",
         v.gps_time AS "gpsTimestamp",
-        TO_CHAR(v.recorded_at, 'YYYY-MM-DD HH24:MI:SS') AS "datetimeStr",
+        TO_CHAR(v.recorded_at AT TIME ZONE 'UTC' AT TIME ZONE 'Etc/GMT-1', 'YYYY-MM-DD HH24:MI:SS') AS "datetimeStr",
         v.recorded_at AS "recordedAt"
       FROM vitals v
       ORDER BY v.recorded_at DESC

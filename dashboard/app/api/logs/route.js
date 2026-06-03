@@ -21,8 +21,8 @@ export async function GET(request) {
       SELECT 
         p.name AS "patientName",
         p.id_number AS "patientId",
-        TO_CHAR(v.recorded_at, 'YYYY-MM-DD') AS date,
-        TO_CHAR(v.recorded_at, 'HH24:MI:SS') AS time,
+        TO_CHAR(v.recorded_at AT TIME ZONE 'UTC' AT TIME ZONE 'Etc/GMT-1', 'YYYY-MM-DD') AS date,
+        TO_CHAR(v.recorded_at AT TIME ZONE 'UTC' AT TIME ZONE 'Etc/GMT-1', 'HH24:MI:SS') AS time,
         v.heart_rate AS hr,
         v.spo2,
         v.temperature AS temp,

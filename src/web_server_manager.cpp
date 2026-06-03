@@ -40,9 +40,9 @@ bool WebServerManager::begin(StorageManager* storageMgr, SensorManager* sensorMg
         if (WiFi.status() == WL_CONNECTED) {
             wifiConnected = true;
             Serial.printf("\n[WebServerManager] Connected to Wi-Fi. IP: %s\n", WiFi.localIP().toString().c_str());
-            // Sync time with NTP server for secure SSL/TLS handshakes
-            configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-            Serial.println("[WebServerManager] NTP Time Sync configured.");
+            // Sync time with NTP server for secure SSL/TLS handshakes (offset by 3600 seconds for GMT+1)
+            configTime(3600, 0, "pool.ntp.org", "time.nist.gov");
+            Serial.println("[WebServerManager] NTP Time Sync configured for GMT+1.");
         } else {
             Serial.println("\n[WebServerManager] Wi-Fi connection failed. Falling back to AP mode...");
             WiFi.softAP(WIFI_SSID, WIFI_PASSWORD);
