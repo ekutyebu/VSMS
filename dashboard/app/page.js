@@ -173,6 +173,11 @@ export default function Dashboard() {
       
       mapRef.current = mapInstance;
       markerRef.current = marker;
+
+      // Force Leaflet to recalculate container bounds after mount
+      setTimeout(() => {
+        mapInstance.invalidateSize();
+      }, 500);
     }
   }, []);
 
@@ -185,6 +190,15 @@ export default function Dashboard() {
       mapRef.current.panTo(pos);
     }
   }, [telemetry.gpsLatitude, telemetry.gpsLongitude, telemetry.gpsValid]);
+
+  // Invalidate map layout whenever the home tab becomes active to load tiles properly
+  useEffect(() => {
+    if (activeTab === 'home' && mapRef.current) {
+      setTimeout(() => {
+        mapRef.current.invalidateSize();
+      }, 200);
+    }
+  }, [activeTab]);
 
   // 3. Native Chart.js setups
   useEffect(() => {

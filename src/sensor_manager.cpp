@@ -368,16 +368,19 @@ void SensorManager::readGPS() {
         gps.encode(gpsSerial.read());
     }
     
-    if (gps.location.isUpdated() && gps.location.isValid()) {
-        data.gpsLatitude = gps.location.lat();
-        data.gpsLongitude = gps.location.lng();
-        data.gpsValid = true;
-        
-        char timeBuffer[15];
-        sprintf(timeBuffer, "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
-        data.gpsTimestamp = String(timeBuffer);
+    // Check if we have a recent, valid GPS fix (within the last 5 seconds)
+    if (gps.location.isValid() && gps.location.age() < 5000) {
+        if (gps.location.isUpdated()) {
+            data.gpsLatitude = gps.location.lat();
+            data.gpsLongitude = gps.location.lng();
+            data.gpsValid = true;
+            
+            char timeBuffer[15];
+            sprintf(timeBuffer, "%02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
+            data.gpsTimestamp = String(timeBuffer);
+        }
     } else {
-        // If GPS is not reporting valid data (e.g. indoors or antenna unplugged)
+        // No valid fix or fix has gone stale
         if (ALLOW_SENSOR_SIMULATION) {
             simulateGPS();
         } else {

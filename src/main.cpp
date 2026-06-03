@@ -182,7 +182,7 @@ bool postTelemetry(const String& serverUrl, const String& jsonPayload) {
         }
     } else {
         WiFiClient client;
-        client.setTimeout(5000);       // 5-second timeout
+        client.setTimeout(2000);       // 2-second timeout
         Serial.printf("[DB Sync] Plain HTTP: Attempting connection to %s\n", url.host.c_str());
         
         if (client.connect(url.host.c_str(), url.port)) {
