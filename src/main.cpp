@@ -6,6 +6,7 @@
 #include "web_server_manager.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <Wire.h>
 
 // Global instances of system managers
 SensorManager sensorManager;
@@ -350,6 +351,9 @@ void setup() {
     Serial.println("\n=================================================");
     Serial.println("  ESP32 IoT Vital Signs Health Monitor Starting  ");
     Serial.println("=================================================");
+
+    // Initialize Wire (I2C) first on OLED_SDA and OLED_SCL
+    Wire.begin(OLED_SDA, OLED_SCL);
 
     // Initialize display first to show status to local operator
     displayManager.begin();

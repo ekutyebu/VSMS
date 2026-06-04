@@ -58,15 +58,21 @@ bool StorageManager::logData(const SensorData& sensorData, AlertLevel status) {
         strcpy(gpsStr, "None");
     }
     
-    char logLine[160];
-    sprintf(logLine, "%s,%s,%d,%d,%.1f,%d/%d,%s,%s",
+    char bpStr[32];
+    if (sensorData.bpState != BP_STATE_IDLE && sensorData.bpState != BP_STATE_COMPLETE) {
+        sprintf(bpStr, "Cuff:%d", (int)sensorData.bpCuffPressure);
+    } else {
+        sprintf(bpStr, "%d/%d/%d", sensorData.bpSystolic, sensorData.bpDiastolic, sensorData.bpMAP);
+    }
+    
+    char logLine[180];
+    sprintf(logLine, "%s,%s,%d,%d,%.1f,%s,%s,%s",
             datePart.c_str(),
             timePart.c_str(),
             (int)sensorData.heartRate,
             (int)sensorData.spo2,
             sensorData.tempC,
-            sensorData.bpSystolic,
-            sensorData.bpDiastolic,
+            bpStr,
             statusStr.c_str(),
             gpsStr);
             

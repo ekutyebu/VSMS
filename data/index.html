@@ -340,22 +340,59 @@
                             </div>
                             <span class="status-indicator-pill" id="bp-status-pill">Normal</span>
                         </div>
-                        <div class="vital-value-display">
-                            <span class="value" id="live-bp">--/--</span>
-                            <span class="unit">mmHg</span>
-                        </div>
-                        <div class="vital-stats-grid">
-                            <div class="stat-box">
-                                <span class="label">Systolic</span>
-                                <span class="value" id="live-bp-sys">--</span>
+                        
+                        <!-- IDLE VIEW -->
+                        <div id="bp-idle-view">
+                            <div class="vital-value-display" style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <span class="value" id="live-bp">--/--</span>
+                                    <span class="unit">mmHg</span>
+                                </div>
+                                <button class="btn-primary" id="btn-start-bp" onclick="startBPMeasurement()" style="padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.75rem; background-color: var(--color-normal);">
+                                    <i class="fa-solid fa-play"></i> Start Cuff
+                                </button>
                             </div>
-                            <div class="stat-box">
-                                <span class="label">Diastolic</span>
-                                <span class="value" id="live-bp-dia">--</span>
+                            <div class="vital-stats-grid">
+                                <div class="stat-box">
+                                    <span class="label">Systolic</span>
+                                    <span class="value" id="live-bp-sys">--</span>
+                                </div>
+                                <div class="stat-box">
+                                    <span class="label">Diastolic</span>
+                                    <span class="value" id="live-bp-dia">--</span>
+                                </div>
+                                <div class="stat-box">
+                                    <span class="label">MAP</span>
+                                    <span class="value" id="live-bp-map">--</span>
+                                </div>
+                            </div>
+                            <div class="vital-chart-container">
+                                <canvas id="chart-bp"></canvas>
                             </div>
                         </div>
-                        <div class="vital-chart-container">
-                            <canvas id="chart-bp"></canvas>
+
+                        <!-- ACTIVE MEASUREMENT VIEW -->
+                        <div id="bp-active-view" class="hidden" style="display: flex; flex-direction: column; justify-content: space-between; flex-grow: 1; min-height: 200px; padding-top: 10px;">
+                            <div style="text-align: center; margin: 10px 0;">
+                                <span id="cuff-pressure" style="font-size: 3rem; font-weight: 800; color: #fff; line-height: 1;">0</span>
+                                <span style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-top: 5px;">mmHg (Cuff Pressure)</span>
+                            </div>
+                            
+                            <div style="margin-top: 5px;">
+                                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 5px;">
+                                    <span id="cuff-status-text" style="font-weight: 500;">Inflating Cuff...</span>
+                                    <span id="cuff-progress-text">0%</span>
+                                </div>
+                                <div style="width: 100%; height: 8px; background: rgba(0, 0, 0, 0.4); border-radius: 4px; overflow: hidden; border: 1px solid var(--border-color);">
+                                    <div id="cuff-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--color-blue), var(--color-normal)); border-radius: 4px; transition: width 0.3s ease;"></div>
+                                </div>
+                            </div>
+
+                            <div style="margin-top: 15px;">
+                                <button class="btn-danger w-full" id="btn-cancel-bp" onclick="cancelBPMeasurement()" style="width: 100%; padding: 0.5rem 1rem;">
+                                    <i class="fa-solid fa-circle-stop"></i> Cancel Measurement
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

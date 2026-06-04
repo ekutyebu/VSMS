@@ -19,7 +19,7 @@
 // System Parameters
 // ==========================================
 #define WEBSOCKET_UPDATE_INTERVAL_MS 1000 // Send data every 1 second
-#define OLED_PAGE_ROTATION_MS 3000        // Rotate OLED screen pages every 3 seconds
+#define OLED_PAGE_ROTATION_MS 8000        // Rotate OLED screen pages every 8 seconds
 #define SERIAL_BAUD_RATE 115200
 
 // ==========================================
@@ -62,6 +62,13 @@
 #define SD_MISO_PIN 19
 #define SD_SCK_PIN 18
 
+// MPS20N0040D Blood Pressure Sensor (via HX711)
+#define HX711_DOUT_PIN 32
+#define HX711_SCK_PIN 33
+#define BP_CALIBRATION_FACTOR 0.000045f // Raw differential signal to mmHg scaling
+#define BP_INFLATION_TARGET 160        // Target inflation pressure in mmHg
+#define BP_DEFLATION_COMPLETE_LIMIT 25 // Pressure below which measurement stops
+
 // Alert Indicators
 #define LED_GREEN_PIN 12
 #define LED_YELLOW_PIN 13
@@ -77,6 +84,15 @@ enum AlertLevel {
     STATUS_NORMAL = 0,
     STATUS_WARNING = 1,
     STATUS_CRITICAL = 2
+};
+
+// Blood Pressure States
+enum BPState {
+    BP_STATE_IDLE = 0,
+    BP_STATE_INFLATING = 1,
+    BP_STATE_DEFLATING = 2,
+    BP_STATE_PROCESSING = 3,
+    BP_STATE_COMPLETE = 4
 };
 
 // Heart Rate (BPM)

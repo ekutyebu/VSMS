@@ -3,7 +3,7 @@
 
 #include "config.h"
 #include "sensor_manager.h"
-#include <Adafruit_SSD1306.h>
+#include <Adafruit_SH110X.h>
 
 class DisplayManager {
 public:
@@ -14,7 +14,7 @@ public:
     int getCurrentPage() const { return currentPage; }
 
 private:
-    Adafruit_SSD1306 display;
+    Adafruit_SH1106G display;
     int currentPage;
     unsigned long lastPageTransitionMs;
     bool oledOnline;
@@ -26,6 +26,7 @@ private:
     void drawPage5(const SensorData& d, AlertLevel alert, bool wifi, bool sd);
     void drawAlertBanner(AlertLevel alert);
     void drawHeader(const char* title);
+    void drawBPMeasurementPage(const SensorData& d);
 };
 
 #endif // DISPLAY_MANAGER_H

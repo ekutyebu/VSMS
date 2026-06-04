@@ -32,6 +32,9 @@ export default function Dashboard() {
     tempF: 0,
     bpSystolic: 120,
     bpDiastolic: 80,
+    bpMAP: 93,
+    bpCuffPressure: 0,
+    bpState: 0,
     ecgLeadsOff: true,
     gpsLatitude: 0,
     gpsLongitude: 0,
@@ -683,6 +686,34 @@ export default function Dashboard() {
     }
   };
 
+  const startBloodPressureMeasurement = () => {
+    console.log("Triggering ESP32 Blood Pressure cuff inflation...");
+    let targetUrl = `http://${esp32Ip}/api/start_bp`;
+    if (esp32Ip === 'localhost' || esp32Ip === '127.0.0.1' || esp32Ip.startsWith('localhost:')) {
+      targetUrl = `/api/start_bp`;
+    }
+    fetch(targetUrl, { mode: 'no-cors' })
+      .catch(() => {});
+      
+    if (wsConnected && wsRef.current) {
+      wsRef.current.send(JSON.stringify({ startBP: true }));
+    }
+  };
+
+  const cancelBloodPressureMeasurement = () => {
+    console.log("Cancelling ESP32 Blood Pressure measurement...");
+    let targetUrl = `http://${esp32Ip}/api/cancel_bp`;
+    if (esp32Ip === 'localhost' || esp32Ip === '127.0.0.1' || esp32Ip.startsWith('localhost:')) {
+      targetUrl = `/api/cancel_bp`;
+    }
+    fetch(targetUrl, { mode: 'no-cors' })
+      .catch(() => {});
+      
+    if (wsConnected && wsRef.current) {
+      wsRef.current.send(JSON.stringify({ cancelBP: true }));
+    }
+  };
+
   // Reset statistical counters
   const resetStatsOnDevice = () => {
     if (wsConnected && wsRef.current) {
@@ -1262,30 +1293,115 @@ export default function Dashboard() {
             <div className={`bg-bgCard border border-border-color rounded-2xl p-6 shadow-xl flex flex-col h-[320px] transition-all ${
               !isOnline ? 'opacity-65 saturate-50' : ''
             } ${
-              isOnline && telemetry.systemAlertLevel === 2 && (telemetry.bpSystolic >= 180 || telemetry.bpDiastolic >= 120) ? 'card-glow-red' : 
-              isOnline && telemetry.systemAlertLevel === 1 && (telemetry.bpSystolic >= 140 || telemetry.bpDiastolic >= 90) ? 'card-glow-yellow' : ''
+              isOnline && (telemetry.bpState === 0 || telemetry.bpState === 4) && telemetry.systemAlertLevel === 2 && (telemetry.bpSystolic >= 180 || telemetry.bpDiastolic >= 120) ? 'card-glow-red' : 
+              isOnline && (telemetry.bpState === 0 || telemetry.bpState === 4) && telemetry.systemAlertLevel === 1 && (telemetry.bpSystolic >= 140 || telemetry.bpDiastolic >= 90) ? 'card-glow-yellow' : ''
             }`}>
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-semibold text-sm flex items-center gap-2 text-text-secondary"><i className="fa-solid fa-gauge-simple-high text-colorNormal"></i> Blood Pressure {!isOnline && <span className="px-1.5 py-0.5 text-[8px] bg-white/10 text-text-muted rounded uppercase font-bold">Cached</span>}</span>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                  !isOnline ? 'bg-gray-500/15 text-text-muted' :
-                  (telemetry.bpSystolic >= 180 || telemetry.bpDiastolic >= 120) ? 'bg-colorCritical/15 text-colorCritical' : 
-                  (telemetry.bpSystolic >= 140 || telemetry.bpDiastolic >= 90) ? 'bg-colorWarning/15 text-colorWarning' : 'bg-colorNormal/15 text-colorNormal'
-                }`}>
-                  {!isOnline ? 'Offline' : ((telemetry.bpSystolic >= 180 || telemetry.bpDiastolic >= 120) ? 'Hypertensive' : (telemetry.bpSystolic >= 140 || telemetry.bpDiastolic >= 90) ? 'Borderline' : 'Normal')}
-                </span>
-              </div>
-              <div className="my-2">
-                <span className="text-4xl font-extrabold tracking-tight">{telemetry.bpSystolic}/{telemetry.bpDiastolic}</span>
-                <span className="text-xs text-text-muted ml-1.5 font-semibold">mmHg</span>
-              </div>
-              <div className="flex gap-4 pb-3 border-b border-border-color mb-4 text-[10px]">
-                <div><span className="text-text-muted">Systolic:</span> <strong>{telemetry.bpSystolic}</strong></div>
-                <div><span className="text-text-muted">Diastolic:</span> <strong>{telemetry.bpDiastolic}</strong></div>
-              </div>
-              <div className="grow relative">
-                <canvas ref={bpCanvasRef}></canvas>
-              </div>
+              {telemetry.bpState > 0 && telemetry.bpState < 4 ? (
+                // Active measurement view
+                <>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-semibold text-sm flex items-center gap-2 text-text-secondary">
+                      <i className="fa-solid fa-gauge-simple-high text-colorNormal animate-pulse"></i> Blood Pressure
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-colorNormal/15 text-colorNormal animate-pulse">
+                      {telemetry.bpState === 1 ? 'Inflating' : telemetry.bpState === 2 ? 'Measuring' : 'Processing'}
+                    </span>
+                  </div>
+                  
+                  <div className="grow flex flex-col justify-between py-2">
+                    <div className="text-center my-auto">
+                      <span className="text-5xl font-extrabold tracking-tight text-white animate-pulse">
+                        {Math.round(telemetry.bpCuffPressure || 0)}
+                      </span>
+                      <span className="text-xs text-text-muted ml-1.5 font-semibold">mmHg</span>
+                      <span className="text-xs text-text-secondary block mt-1">Cuff Pressure</span>
+                    </div>
+                    
+                    <div className="mt-2">
+                      <div className="flex justify-between items-center mb-1.5 text-[10px]">
+                        <span className="font-semibold text-text-secondary">
+                          {telemetry.bpState === 1 ? (
+                            <span className="flex items-center gap-1"><i className="fa-solid fa-arrow-trend-up text-colorWarning animate-bounce"></i> Inflating Cuff...</span>
+                          ) : telemetry.bpState === 2 ? (
+                            <span className="flex items-center gap-1"><i className="fa-solid fa-arrow-trend-down text-colorBlue animate-pulse"></i> Deflating & Reading Pulses...</span>
+                          ) : (
+                            <span className="flex items-center gap-1"><i className="fa-solid fa-arrows-spin text-colorCritical animate-spin"></i> Processing...</span>
+                          )}
+                        </span>
+                        <span className="font-bold text-text-primary">
+                          {telemetry.bpState === 1 ? `${Math.round(Math.min(100, ((telemetry.bpCuffPressure || 0) / 160) * 100))}%` :
+                           telemetry.bpState === 2 ? `${Math.round(Math.min(100, Math.max(0, ((160 - (telemetry.bpCuffPressure || 0)) / 135) * 100)))}%` :
+                           'Calculating...'}
+                        </span>
+                      </div>
+                      
+                      {/* Progress bar */}
+                      <div className="w-full h-2.5 bg-slate-900/60 rounded-full overflow-hidden border border-border-color/30 relative">
+                        <div 
+                          className={`h-full transition-all duration-300 rounded-full ${
+                            telemetry.bpState === 3 
+                              ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-500 w-full animate-pulse' 
+                              : 'bg-gradient-to-r from-colorBlue to-colorNormal'
+                          }`}
+                          style={{
+                            width: telemetry.bpState === 1 ? `${Math.min(100, ((telemetry.bpCuffPressure || 0) / 160) * 100)}%` :
+                                   telemetry.bpState === 2 ? `${Math.min(100, Math.max(0, ((160 - (telemetry.bpCuffPressure || 0)) / 135) * 100))}%` :
+                                   '100%'
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex justify-center">
+                      <button
+                        onClick={cancelBloodPressureMeasurement}
+                        className="px-4 py-1.5 text-xs bg-transparent border border-colorCritical hover:bg-colorCritical/10 active:scale-95 text-colorCritical font-bold rounded-lg transition-all flex items-center gap-1.5"
+                      >
+                        <i className="fa-solid fa-circle-stop animate-pulse"></i> Cancel Measurement
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                // Standard view
+                <>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-semibold text-sm flex items-center gap-2 text-text-secondary"><i className="fa-solid fa-gauge-simple-high text-colorNormal"></i> Blood Pressure {!isOnline && <span className="px-1.5 py-0.5 text-[8px] bg-white/10 text-text-muted rounded uppercase font-bold">Cached</span>}</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                      !isOnline ? 'bg-gray-500/15 text-text-muted' :
+                      (telemetry.bpSystolic >= 180 || telemetry.bpDiastolic >= 120) ? 'bg-colorCritical/15 text-colorCritical' : 
+                      (telemetry.bpSystolic >= 140 || telemetry.bpDiastolic >= 90) ? 'bg-colorWarning/15 text-colorWarning' : 'bg-colorNormal/15 text-colorNormal'
+                    }`}>
+                      {!isOnline ? 'Offline' : ((telemetry.bpSystolic >= 180 || telemetry.bpDiastolic >= 120) ? 'Hypertensive' : (telemetry.bpSystolic >= 140 || telemetry.bpDiastolic >= 90) ? 'Borderline' : 'Normal')}
+                    </span>
+                  </div>
+                  <div className="my-2 flex justify-between items-center">
+                    <div>
+                      <span className="text-4xl font-extrabold tracking-tight">{telemetry.bpSystolic}/{telemetry.bpDiastolic}</span>
+                      <span className="text-xs text-text-muted ml-1.5 font-semibold">mmHg</span>
+                      {telemetry.bpMAP > 0 && (
+                        <div className="text-[10px] text-text-secondary mt-0.5">
+                          MAP: <strong className="text-text-primary">{telemetry.bpMAP} mmHg</strong>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={startBloodPressureMeasurement}
+                      disabled={!isOnline}
+                      className="px-3.5 py-1.5 text-xs bg-colorNormal hover:bg-emerald-600 disabled:bg-gray-700 disabled:opacity-40 disabled:pointer-events-none active:scale-95 text-white font-bold rounded-lg transition-all shadow-[0_0_10px_rgba(16,185,129,0.2)] disabled:shadow-none flex items-center gap-1.5"
+                    >
+                      <i className="fa-solid fa-play"></i> Start Cuff
+                    </button>
+                  </div>
+                  <div className="flex gap-4 pb-3 border-b border-border-color mb-4 text-[10px]">
+                    <div><span className="text-text-muted">Systolic:</span> <strong>{telemetry.bpSystolic}</strong></div>
+                    <div><span className="text-text-muted">Diastolic:</span> <strong>{telemetry.bpDiastolic}</strong></div>
+                  </div>
+                  <div className="grow relative">
+                    <canvas ref={bpCanvasRef}></canvas>
+                  </div>
+                </>
+              )}
             </div>
 
           </div>

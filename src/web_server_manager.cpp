@@ -146,6 +146,18 @@ void WebServerManager::setupRoutes() {
         }
     });
 
+    // API: Start Blood Pressure measurement cycle
+    server.on("/api/start_bp", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        sensors->startBPMeasurement();
+        request->send(200, "application/json", "{\"status\":\"success\",\"message\":\"BP measurement started\"}");
+    });
+    
+    // API: Cancel/reset Blood Pressure measurement cycle
+    server.on("/api/cancel_bp", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        sensors->cancelBPMeasurement();
+        request->send(200, "application/json", "{\"status\":\"success\",\"message\":\"BP measurement cancelled\"}");
+    });
+
     // 404 Handler
     server.onNotFound([](AsyncWebServerRequest *request) {
         request->send(404, "text/plain", "404: Not Found");
@@ -191,6 +203,12 @@ void WebServerManager::handleWebSocketMessage(void *arg, uint8_t *data, size_t l
             if (doc.containsKey("resetStats")) {
                 sensors->resetStats();
             }
+            if (doc.containsKey("startBP")) {
+                sensors->startBPMeasurement();
+            }
+            if (doc.containsKey("cancelBP")) {
+                sensors->cancelBPMeasurement();
+            }
         }
     }
 }
@@ -224,6 +242,9 @@ void WebServerManager::update(AlertLevel activeAlertLevel) {
             doc["tempF"] = d.tempF;
             doc["bpSystolic"] = d.bpSystolic;
             doc["bpDiastolic"] = d.bpDiastolic;
+            doc["bpMAP"] = d.bpMAP;
+            doc["bpCuffPressure"] = d.bpCuffPressure;
+            doc["bpState"] = d.bpState;
             doc["ecgLeadsOff"] = d.ecgLeadsOff;
             doc["gpsLatitude"] = d.gpsLatitude;
             doc["gpsLongitude"] = d.gpsLongitude;

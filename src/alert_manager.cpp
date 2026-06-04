@@ -85,8 +85,11 @@ AlertLevel AlertManager::evaluateAlertLevel(const SensorData& d) {
     if (d.tempC > 0 && d.tempC > TEMP_WARNING_MAX) {
         return STATUS_CRITICAL;
     }
-    if (d.bpSystolic >= BP_SYS_CRITICAL || d.bpDiastolic >= BP_DIA_CRITICAL) {
-        return STATUS_CRITICAL;
+    // Only check blood pressure alerts if not in active measurement state (idle or completed)
+    if (d.bpState == BP_STATE_IDLE || d.bpState == BP_STATE_COMPLETE) {
+        if (d.bpSystolic >= BP_SYS_CRITICAL || d.bpDiastolic >= BP_DIA_CRITICAL) {
+            return STATUS_CRITICAL;
+        }
     }
 
     // Evaluate WARNING second (any warning sensor reading forces system alert to warning)
@@ -99,8 +102,11 @@ AlertLevel AlertManager::evaluateAlertLevel(const SensorData& d) {
     if (d.tempC > 0 && d.tempC > TEMP_NORMAL_MAX) {
         return STATUS_WARNING;
     }
-    if (d.bpSystolic >= BP_SYS_WARNING || d.bpDiastolic >= BP_DIA_WARNING) {
-        return STATUS_WARNING;
+    // Only check blood pressure alerts if not in active measurement state (idle or completed)
+    if (d.bpState == BP_STATE_IDLE || d.bpState == BP_STATE_COMPLETE) {
+        if (d.bpSystolic >= BP_SYS_WARNING || d.bpDiastolic >= BP_DIA_WARNING) {
+            return STATUS_WARNING;
+        }
     }
 
     // Default to Normal

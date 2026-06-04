@@ -139,12 +139,24 @@ function connectWebSocket() {
         console.log("WebSocket connected.");
         statusDot.className = "status-dot green";
         statusText.innerText = "WebSocket: Online";
+        const startBtn = document.getElementById('btn-start-bp');
+        if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.style.opacity = "1";
+            startBtn.style.pointerEvents = "auto";
+        }
     };
     
     websocket.onclose = () => {
         console.log("WebSocket disconnected. Retrying in 2 seconds...");
         statusDot.className = "status-dot gray";
         statusText.innerText = "WebSocket: Offline (Retrying...)";
+        const startBtn = document.getElementById('btn-start-bp');
+        if (startBtn) {
+            startBtn.disabled = true;
+            startBtn.style.opacity = "0.5";
+            startBtn.style.pointerEvents = "none";
+        }
         setTimeout(connectWebSocket, 2000);
     };
     
@@ -201,7 +213,7 @@ function handleTelemetry(t) {
     document.getElementById('home-hr').innerText = Math.round(t.heartRate) || "--";
     document.getElementById('home-spo2').innerText = Math.round(t.spo2) || "--";
     document.getElementById('home-temp').innerText = t.tempC ? t.tempC.toFixed(1) : "--";
-    document.getElementById('home-bp').innerText = `${t.bpSystolic}/${t.bpDiastolic}`;
+    document.getElementById('home-bp').innerText = `${t.bpSystolic}/${t.bpDiastolic}${t.bpMAP ? ' (' + t.bpMAP + ')' : ''}`;
     
     // 3.3 Update Live View Panels & Glows
     updateVitalCard('hr', Math.round(t.heartRate), t.systemAlertLevel);
@@ -219,9 +231,52 @@ function handleTelemetry(t) {
     document.getElementById('live-temp').innerText = t.tempC ? t.tempC.toFixed(1) : "--";
     document.getElementById('live-temp-f').innerText = t.tempF ? t.tempF.toFixed(1) + " °F" : "--";
     
-    document.getElementById('live-bp').innerText = `${t.bpSystolic}/${t.bpDiastolic}`;
-    document.getElementById('live-bp-sys').innerText = t.bpSystolic;
-    document.getElementById('live-bp-dia').innerText = t.bpDiastolic;
+    // Blood Pressure states toggling and data values
+    const bpIdleView = document.getElementById('bp-idle-view');
+    const bpActiveView = document.getElementById('bp-active-view');
+    
+    if (t.bpState > 0 && t.bpState < 4) {
+        // Active measurement view
+        if (bpIdleView) bpIdleView.classList.add('hidden');
+        if (bpActiveView) bpActiveView.classList.remove('hidden');
+        
+        document.getElementById('cuff-pressure').innerText = Math.round(t.bpCuffPressure || 0);
+        
+        let statusText = "Inflating Cuff...";
+        let progress = 0;
+        
+        if (t.bpState === 1) { // INFLATING
+            statusText = `<i class="fa-solid fa-arrow-trend-up text-orange animate-bounce"></i> Inflating Cuff...`;
+            progress = Math.round(Math.min(100, ((t.bpCuffPressure || 0) / 160) * 100));
+        } else if (t.bpState === 2) { // DEFLATING
+            statusText = `<i class="fa-solid fa-arrow-trend-down text-blue animate-pulse"></i> Deflating & Reading Pulses...`;
+            progress = Math.round(Math.min(100, Math.max(0, ((160 - (t.bpCuffPressure || 0)) / 135) * 100)));
+        } else if (t.bpState === 3) { // PROCESSING
+            statusText = `<i class="fa-solid fa-arrows-spin text-red animate-spin"></i> Processing...`;
+            progress = 100;
+        }
+        
+        document.getElementById('cuff-status-text').innerHTML = statusText;
+        document.getElementById('cuff-progress-text').innerText = progress + '%';
+        document.getElementById('cuff-progress-bar').style.width = progress + '%';
+    } else {
+        // Idle view
+        if (bpIdleView) bpIdleView.classList.remove('hidden');
+        if (bpActiveView) bpActiveView.classList.add('hidden');
+        
+        document.getElementById('live-bp').innerText = `${t.bpSystolic}/${t.bpDiastolic}`;
+        document.getElementById('live-bp-sys').innerText = t.bpSystolic;
+        document.getElementById('live-bp-dia').innerText = t.bpDiastolic;
+        document.getElementById('live-bp-map').innerText = t.bpMAP ? t.bpMAP : "--";
+        
+        // Enable start button since we are connected and idle
+        const startBtn = document.getElementById('btn-start-bp');
+        if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.style.opacity = "1";
+            startBtn.style.pointerEvents = "auto";
+        }
+    }
     
     // 3.4 Append Vitals Chart Data
     const label = new Date().toLocaleTimeString().split(' ')[0];
@@ -877,4 +932,25 @@ function setSimLevel(level) {
                 websocket.send(JSON.stringify({ requestSimLevel: level }));
             }
         });
+}
+
+// 12. BLOOD PRESSURE MEASUREMENT CONTROLS
+function startBPMeasurement() {
+    console.log("Triggering ESP32 Blood Pressure cuff inflation...");
+    fetch('/api/start_bp')
+        .catch(() => {});
+    
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send(JSON.stringify({ startBP: true }));
+    }
+}
+
+function cancelBPMeasurement() {
+    console.log("Cancelling ESP32 Blood Pressure measurement...");
+    fetch('/api/cancel_bp')
+        .catch(() => {});
+    
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send(JSON.stringify({ cancelBP: true }));
+    }
 }

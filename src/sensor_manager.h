@@ -26,6 +26,9 @@ struct SensorData {
     // Blood Pressure
     int bpSystolic;
     int bpDiastolic;
+    int bpMAP;
+    float bpCuffPressure;
+    int bpState;
     
     // ECG
     int ecgValue;
@@ -42,6 +45,8 @@ struct SensorData {
     uint32_t epochTime;
 };
 
+#include "hx711.h"
+
 class SensorManager {
 public:
     SensorManager();
@@ -52,6 +57,10 @@ public:
     // Methods to interact/change simulated state for testing
     void toggleSimulatedAlert(AlertLevel level);
     void resetStats();
+    
+    // Blood Pressure triggers
+    void startBPMeasurement();
+    void cancelBPMeasurement();
 
 private:
     SensorData data;
@@ -63,12 +72,32 @@ private:
     RTC_DS3231 rtc;
     TinyGPSPlus gps;
     HardwareSerial& gpsSerial;
+    HX711 pressureSensor;
 
     // Status flags
     bool dsOnline;
     bool maxOnline;
     bool rtcOnline;
     bool gpsOnline;
+    bool hxOnline;
+
+    // Blood Pressure State Machine variables
+    BPState bpCurrentState;
+    unsigned long bpStateChangeMs;
+    unsigned long lastBPSampleMs;
+    bool bpMeasurementTriggered;
+    float bpRawBaseCuffPressure;
+    float bpLastCuffPressure;
+    
+    // Oscillometric Data Buffers (fixed-size to avoid dynamic allocations)
+    static const int MAX_BP_OSC_SAMPLES = 300;
+    float bpOscPressures[MAX_BP_OSC_SAMPLES];
+    float bpOscAmplitudes[MAX_BP_OSC_SAMPLES];
+    int bpOscCount;
+    
+    // Simple filter variables
+    float bpFilterStateLow;
+    float bpFilterStateHigh;
 
     // HR Statistics counters
     unsigned long hrSampleCount;
@@ -93,6 +122,9 @@ private:
     void simulateBloodPressure();
     void simulateGPS();
     void simulateRTC();
+    
+    // Oscillometric Processing Helper
+    void processOscillometricBP();
     
     void updateHRStats(float currentHR);
 };

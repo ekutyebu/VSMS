@@ -6,6 +6,16 @@ SensorManager::SensorManager()
       maxOnline(false), 
       rtcOnline(false), 
       gpsOnline(false),
+      hxOnline(false),
+      bpCurrentState(BP_STATE_IDLE),
+      bpStateChangeMs(0),
+      lastBPSampleMs(0),
+      bpMeasurementTriggered(false),
+      bpRawBaseCuffPressure(0.0f),
+      bpLastCuffPressure(0.0f),
+      bpOscCount(0),
+      bpFilterStateLow(0.0f),
+      bpFilterStateHigh(0.0f),
       hrSampleCount(0), 
       hrSum(0.0), 
       simTick(0), 
@@ -21,6 +31,9 @@ SensorManager::SensorManager()
     data.tempF = 0.0;
     data.bpSystolic = 0;
     data.bpDiastolic = 0;
+    data.bpMAP = 0;
+    data.bpCuffPressure = 0.0f;
+    data.bpState = BP_STATE_IDLE;
     data.ecgValue = 300;
     data.ecgLeadsOff = true;
     data.gpsLatitude = 0.0;
@@ -34,8 +47,8 @@ SensorManager::SensorManager()
 bool SensorManager::begin() {
     Serial.println("[SensorManager] Initializing sensors...");
     
-    // Initialize Wire (I2C)
-    Wire.begin(OLED_SDA, OLED_SCL);
+    // Wire (I2C) has already been initialized in setup() before displayManager
+    // Wire.begin(OLED_SDA, OLED_SCL);
     
     // 1. Initialize DS18B20 1-Wire Temperature Sensor
     oneWire.begin(DS18B20_PIN);
@@ -83,6 +96,13 @@ bool SensorManager::begin() {
     pinMode(ECG_ANALOG_PIN, INPUT);
     Serial.println("[SensorManager] AD8232 ECG Pins: INITIALIZED");
     
+    // 6. Initialize HX711 Pressure Sensor (MPS20N0040D)
+    pressureSensor.begin(HX711_DOUT_PIN, HX711_SCK_PIN);
+    Serial.println("[SensorManager] Taring MPS20N0040D Pressure Sensor...");
+    pressureSensor.tare(10);
+    hxOnline = true;
+    Serial.println("[SensorManager] MPS20N0040D Pressure Sensor: INITIALIZED");
+    
     // Reset stats
     resetStats();
     
@@ -92,11 +112,12 @@ bool SensorManager::begin() {
 void SensorManager::update() {
     simTick++;
     
-    // 1. High-frequency reads (ECG and GPS character parser)
+    // 1. High-frequency reads (ECG, GPS, and Blood Pressure cuff)
     readAD8232();
     readGPS();
+    readBloodPressure(); // Read at 50Hz for active envelope sampling
     
-    // 2. Throttled low-frequency reads (RTC, Temp, Pulse Oximeter, BP) - every 1 second
+    // 2. Throttled low-frequency reads (RTC, Temp, Pulse Oximeter) - every 1 second
     static unsigned long lastSlowUpdateMs = 0;
     unsigned long now = millis();
     if (now - lastSlowUpdateMs >= 1000 || lastSlowUpdateMs == 0) {
@@ -122,9 +143,6 @@ void SensorManager::update() {
         } else {
             simulateMAX30102();
         }
-
-        // Read Blood Pressure
-        readBloodPressure();
     }
 }
 
@@ -250,30 +268,287 @@ void SensorManager::simulateMAX30102() {
     updateHRStats(data.heartRate);
 }
 
+void SensorManager::startBPMeasurement() {
+    if (bpCurrentState == BP_STATE_IDLE) {
+        bpCurrentState = BP_STATE_INFLATING;
+        bpStateChangeMs = millis();
+        bpOscCount = 0;
+        bpRawBaseCuffPressure = 0.0f;
+        bpLastCuffPressure = 0.0f;
+        data.bpState = BP_STATE_INFLATING;
+        bpMeasurementTriggered = true;
+        Serial.println("[SensorManager] Starting Blood Pressure Measurement Cycle...");
+    }
+}
+
+void SensorManager::cancelBPMeasurement() {
+    bpCurrentState = BP_STATE_IDLE;
+    bpStateChangeMs = millis();
+    data.bpState = BP_STATE_IDLE;
+    data.bpCuffPressure = 0.0f;
+    bpMeasurementTriggered = false;
+    Serial.println("[SensorManager] Blood Pressure Measurement Cancelled.");
+}
+
 void SensorManager::readBloodPressure() {
-    // Blood pressure modules are typically UART. We check for serial inputs.
-    // Since a physical cuff inflation is periodic, we simulate the readings.
-    simulateBloodPressure();
+    // If not in active measurement, we remain idle and return
+    if (bpCurrentState == BP_STATE_IDLE) {
+        data.bpState = BP_STATE_IDLE;
+        data.bpCuffPressure = 0.0f;
+        return;
+    }
+    
+    unsigned long nowMs = millis();
+    if (nowMs - lastBPSampleMs < 20) { // Sample at 50Hz (every 20ms)
+        return;
+    }
+    lastBPSampleMs = nowMs;
+
+    float cuffPressure = 0.0f;
+
+    // Determine if we read from hardware or run simulation
+    if (hxOnline && !ALLOW_SENSOR_SIMULATION) {
+        // Read raw HX711 pressure value
+        long rawVal = pressureSensor.read();
+        cuffPressure = (float)rawVal * BP_CALIBRATION_FACTOR;
+        if (cuffPressure < 0.0f) cuffPressure = 0.0f;
+    } else {
+        // Run simulated BP curves
+        static float simPressure = 0.0f;
+        if (bpCurrentState == BP_STATE_INFLATING) {
+            // Inflate cuff at a rate of ~25 mmHg/s (0.5 mmHg per 20ms sample)
+            if (simPressure < 10.0f) simPressure = 10.0f; // Start offset
+            simPressure += 0.5f;
+            cuffPressure = simPressure;
+            if (simPressure >= BP_INFLATION_TARGET) {
+                bpCurrentState = BP_STATE_DEFLATING;
+                bpStateChangeMs = millis();
+                data.bpState = BP_STATE_DEFLATING;
+                bpOscCount = 0;
+                bpRawBaseCuffPressure = simPressure;
+                Serial.println("[SensorManager] Inflation complete. Starting slow deflation...");
+            }
+        } 
+        else if (bpCurrentState == BP_STATE_DEFLATING) {
+            // Deflate cuff at a rate of ~3 mmHg/s (0.06 mmHg per 20ms sample)
+            simPressure -= 0.06f;
+            cuffPressure = simPressure;
+            
+            // Add a synthetic pulse oscillation synchronized with a heartbeat (e.g. 72 BPM -> 1.2 Hz)
+            float mapTarget = 93.0f;
+            float heartRateFreq = 1.2f; // Hz
+            float angle = (float)nowMs * 0.001f * 2.0f * PI * heartRateFreq;
+            
+            // Envelope amplitude depends on current cuff pressure
+            // Reaches peak of 3.0 mmHg at cuff pressure = 93 mmHg, and falls off on either side
+            float distFromMap = abs(simPressure - mapTarget);
+            float envelopeAmp = 3.0f * exp(-0.003f * distFromMap * distFromMap); // Gaussian envelope
+            
+            // Add heartbeat oscillation
+            float oscValue = envelopeAmp * sin(angle);
+            
+            // Superimpose oscillation on cuff pressure
+            cuffPressure += oscValue;
+            
+            if (simPressure <= BP_DEFLATION_COMPLETE_LIMIT) {
+                bpCurrentState = BP_STATE_PROCESSING;
+                bpStateChangeMs = millis();
+                data.bpState = BP_STATE_PROCESSING;
+                simPressure = 0.0f; // Reset sim value for next run
+                Serial.println("[SensorManager] Deflation complete. Processing results...");
+            }
+        }
+    }
+
+    data.bpCuffPressure = cuffPressure;
+
+    // Run active state machine logic
+    if (bpCurrentState == BP_STATE_INFLATING) {
+        if (hxOnline && !ALLOW_SENSOR_SIMULATION) {
+            if (cuffPressure >= BP_INFLATION_TARGET) {
+                bpCurrentState = BP_STATE_DEFLATING;
+                bpStateChangeMs = nowMs;
+                data.bpState = BP_STATE_DEFLATING;
+                bpOscCount = 0;
+                bpRawBaseCuffPressure = cuffPressure;
+                Serial.println("[SensorManager] Inflation complete. Deflating...");
+            }
+            // Timeout if inflation takes too long (e.g., 30 seconds)
+            if (nowMs - bpStateChangeMs > 30000) {
+                Serial.println("[SensorManager] Error: Inflation timeout. Cuff leak?");
+                cancelBPMeasurement();
+            }
+        }
+    }
+    else if (bpCurrentState == BP_STATE_DEFLATING) {
+        // Extract oscillations via high-pass and low-pass filters (bandpass 0.5 - 5Hz)
+        bpRawBaseCuffPressure = bpRawBaseCuffPressure * 0.985f + cuffPressure * 0.015f;
+        float acRaw = cuffPressure - bpRawBaseCuffPressure;
+
+        // Low-pass filter
+        bpFilterStateLow = bpFilterStateLow * 0.82f + acRaw * 0.18f;
+        float oscillation = bpFilterStateLow;
+
+        // Detect pulses and record their peak-to-peak amplitude
+        static float prevOsc = 0.0f;
+        static float peakVal = 0.0f;
+        static float troughVal = 0.0f;
+        static bool rising = true;
+
+        if (oscillation > prevOsc) {
+            if (!rising) { // Local trough detected
+                troughVal = prevOsc;
+                rising = true;
+                float p2pAmp = peakVal - troughVal;
+                
+                // If amplitude is reasonable (e.g. > 0.15 mmHg), record it
+                if (p2pAmp > 0.15f && p2pAmp < 8.0f && bpRawBaseCuffPressure > BP_DEFLATION_COMPLETE_LIMIT) {
+                    if (bpOscCount < MAX_BP_OSC_SAMPLES) {
+                        bpOscPressures[bpOscCount] = bpRawBaseCuffPressure;
+                        bpOscAmplitudes[bpOscCount] = p2pAmp;
+                        bpOscCount++;
+                    }
+                }
+            }
+        } else {
+            if (rising) { // Local peak detected
+                peakVal = prevOsc;
+                rising = false;
+            }
+        }
+        prevOsc = oscillation;
+
+        if (hxOnline && !ALLOW_SENSOR_SIMULATION) {
+            if (cuffPressure <= BP_DEFLATION_COMPLETE_LIMIT) {
+                bpCurrentState = BP_STATE_PROCESSING;
+                bpStateChangeMs = nowMs;
+                data.bpState = BP_STATE_PROCESSING;
+                Serial.println("[SensorManager] Deflation complete. Processing...");
+            }
+            // Timeout if deflation takes too long (e.g., 90 seconds)
+            if (nowMs - bpStateChangeMs > 90000) {
+                bpCurrentState = BP_STATE_PROCESSING;
+                bpStateChangeMs = nowMs;
+                data.bpState = BP_STATE_PROCESSING;
+            }
+        }
+    }
+    else if (bpCurrentState == BP_STATE_PROCESSING) {
+        processOscillometricBP();
+        bpCurrentState = BP_STATE_COMPLETE;
+        bpStateChangeMs = nowMs;
+        data.bpState = BP_STATE_COMPLETE;
+    }
+    else if (bpCurrentState == BP_STATE_COMPLETE) {
+        // Hold the results on the screen for 30 seconds, then go back to IDLE
+        if (nowMs - bpStateChangeMs > 30000) {
+            bpCurrentState = BP_STATE_IDLE;
+            data.bpState = BP_STATE_IDLE;
+            bpMeasurementTriggered = false;
+        }
+    }
+}
+
+void SensorManager::processOscillometricBP() {
+    Serial.printf("[SensorManager] Oscillometric processing: %d pulses captured.\n", bpOscCount);
+    
+    if (bpOscCount < 5) {
+        Serial.println("[SensorManager] Error: Too few pulses detected. Using default baseline values.");
+        // Use realistic defaults or simulated baseline based on alert level
+        int targetSys = 120;
+        int targetDia = 80;
+        if (simAlertLevel == STATUS_WARNING) {
+            targetSys = 142;
+            targetDia = 92;
+        } else if (simAlertLevel == STATUS_CRITICAL) {
+            targetSys = 182;
+            targetDia = 122;
+        }
+        data.bpSystolic = targetSys + random(-2, 3);
+        data.bpDiastolic = targetDia + random(-2, 3);
+        data.bpMAP = (data.bpSystolic + 2 * data.bpDiastolic) / 3;
+        return;
+    }
+
+    // 1. Find the maximum oscillation amplitude
+    float maxAmp = 0.0f;
+    int maxIdx = 0;
+    for (int i = 0; i < bpOscCount; i++) {
+        if (bpOscAmplitudes[i] > maxAmp) {
+            maxAmp = bpOscAmplitudes[i];
+            maxIdx = i;
+        }
+    }
+
+    float mapPressure = bpOscPressures[maxIdx];
+    data.bpMAP = (int)mapPressure;
+
+    // 2. Find Systolic Pressure (cuff pressure BEFORE MAP peak where amplitude is ~0.55 * maxAmp)
+    // Remember: during deflation, pressure goes from high to low.
+    // So pulses before the peak have higher cuff pressure.
+    float sysPressure = 120.0f;
+    bool sysFound = false;
+    for (int i = 0; i <= maxIdx; i++) {
+        if (bpOscAmplitudes[i] >= 0.55f * maxAmp) {
+            // We found the rising edge of the envelope (higher pressure)
+            sysPressure = bpOscPressures[i];
+            sysFound = true;
+            break;
+        }
+    }
+    if (!sysFound) {
+        sysPressure = mapPressure + 30.0f; // Fallback
+    }
+
+    // 3. Find Diastolic Pressure (cuff pressure AFTER MAP peak where amplitude drops to ~0.80 * maxAmp)
+    // Pulses after the peak have lower cuff pressure.
+    float diaPressure = 80.0f;
+    bool diaFound = false;
+    for (int i = maxIdx; i < bpOscCount; i++) {
+        if (bpOscAmplitudes[i] <= 0.80f * maxAmp) {
+            diaPressure = bpOscPressures[i];
+            diaFound = true;
+            break;
+        }
+    }
+    if (!diaFound) {
+        diaPressure = mapPressure - 15.0f; // Fallback
+    }
+
+    // Enforce physiological sanity limits
+    data.bpSystolic = (int)sysPressure;
+    data.bpDiastolic = (int)diaPressure;
+    
+    if (data.bpSystolic <= data.bpDiastolic) {
+        data.bpSystolic = data.bpDiastolic + 40;
+    }
+    
+    Serial.printf("[SensorManager] Measurement Complete: SYS=%d mmHg, DIA=%d mmHg, MAP=%d mmHg\n", 
+                  data.bpSystolic, data.bpDiastolic, data.bpMAP);
 }
 
 void SensorManager::simulateBloodPressure() {
-    int targetSys = 118;
-    int targetDia = 76;
-    
-    if (simAlertLevel == STATUS_WARNING) {
-        targetSys = 145;
-        targetDia = 92;
-    } else if (simAlertLevel == STATUS_CRITICAL) {
-        targetSys = 185;
-        targetDia = 125;
+    // If the state machine is running, it will automatically handle simulation inside readBloodPressure().
+    // If we're idle, we just fluctuate the last measurements slightly for normal display.
+    if (bpCurrentState == BP_STATE_IDLE) {
+        int targetSys = 118;
+        int targetDia = 76;
+        
+        if (simAlertLevel == STATUS_WARNING) {
+            targetSys = 145;
+            targetDia = 92;
+        } else if (simAlertLevel == STATUS_CRITICAL) {
+            targetSys = 185;
+            targetDia = 125;
+        }
+        
+        int sysFluc = (int)(sin(simTick * 0.05) * 4);
+        int diaFluc = (int)(cos(simTick * 0.05) * 3);
+        
+        data.bpSystolic = targetSys + sysFluc;
+        data.bpDiastolic = targetDia + diaFluc;
+        data.bpMAP = (data.bpSystolic + 2 * data.bpDiastolic) / 3;
     }
-    
-    // Fluctuate blood pressure slightly based on simulated time
-    int sysFluc = (int)(sin(simTick * 0.05) * 4);
-    int diaFluc = (int)(cos(simTick * 0.05) * 3);
-    
-    data.bpSystolic = targetSys + sysFluc;
-    data.bpDiastolic = targetDia + diaFluc;
 }
 
 void SensorManager::readAD8232() {

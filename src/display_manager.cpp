@@ -1,5 +1,9 @@
 #include "display_manager.h"
 #include <Adafruit_GFX.h>
+#include <Wire.h>
+
+#define SSD1306_WHITE SH110X_WHITE
+#define SSD1306_BLACK SH110X_BLACK
 
 DisplayManager::DisplayManager()
     : display(OLED_SCREEN_WIDTH, OLED_SCREEN_HEIGHT, &Wire, OLED_RESET),
@@ -12,8 +16,26 @@ DisplayManager::DisplayManager()
 bool DisplayManager::begin() {
     Serial.println("[DisplayManager] Initializing OLED display...");
     
+    // Scan I2C bus to diagnose connection issues
+    Serial.println("[DisplayManager] Scanning I2C bus...");
+    byte error, address;
+    int nDevices = 0;
+    for (address = 1; address < 127; address++) {
+        Wire.beginTransmission(address);
+        error = Wire.endTransmission();
+        if (error == 0) {
+            Serial.printf("[DisplayManager] I2C device found at address 0x%02X\n", address);
+            nDevices++;
+        }
+    }
+    if (nDevices == 0) {
+        Serial.println("[DisplayManager] No I2C devices found! Check your SDA/SCL wiring, pull-ups, and power.");
+    } else {
+        Serial.printf("[DisplayManager] Scan complete. Found %d active I2C device(s).\n", nDevices);
+    }
+    
     // Initialize OLED I2C display
-    if (display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C_ADDR)) {
+    if (display.begin(OLED_I2C_ADDR, true)) {
         oledOnline = true;
         display.clearDisplay();
         display.setTextWrap(false);
@@ -33,6 +55,7 @@ bool DisplayManager::begin() {
         lastPageTransitionMs = millis();
     } else {
         Serial.println("[DisplayManager] SSD1306 OLED: OFFLINE (will log warning)");
+        Serial.printf("[DisplayManager] Please check if your OLED uses address 0x3D instead of 0x3C, or if I2C wiring is disconnected.\n");
     }
     
     return oledOnline;
@@ -41,8 +64,17 @@ bool DisplayManager::begin() {
 void DisplayManager::update(const SensorData& sensorData, AlertLevel systemAlertLevel, bool wifiConnected, bool sdReady) {
     if (!oledOnline) return;
     
-    // Handle automatic page transitions
     unsigned long currentMillis = millis();
+    
+    // Override page rendering if Blood Pressure Measurement is active
+    if (sensorData.bpState != BP_STATE_IDLE) {
+        display.clearDisplay();
+        drawBPMeasurementPage(sensorData);
+        display.display();
+        return;
+    }
+    
+    // Handle automatic page transitions
     if (currentMillis - lastPageTransitionMs >= OLED_PAGE_ROTATION_MS) {
         lastPageTransitionMs = currentMillis;
         currentPage = (currentPage + 1) % 5;
@@ -257,4 +289,73 @@ void DisplayManager::drawAlertBanner(AlertLevel alert) {
     }
     
     display.setTextColor(SSD1306_WHITE); // Reset
+}
+
+void DisplayManager::drawBPMeasurementPage(const SensorData& d) {
+    // Custom header
+    display.fillRect(0, 0, 128, 14, SSD1306_WHITE);
+    display.setTextColor(SSD1306_BLACK);
+    display.setTextSize(1);
+    display.setCursor(4, 3);
+    display.print("BP MONITORING");
+    display.setTextColor(SSD1306_WHITE);
+    
+    display.setCursor(0, 20);
+    display.setTextSize(1);
+    
+    if (d.bpState == BP_STATE_INFLATING) {
+        display.println("INFLATING CUFF...");
+        display.setCursor(0, 32);
+        display.setTextSize(2);
+        display.print((int)d.bpCuffPressure);
+        display.setTextSize(1);
+        display.println(" mmHg");
+        
+        // Progress bar
+        display.drawRect(5, 52, 118, 8, SSD1306_WHITE);
+        int w = (int)((d.bpCuffPressure / (float)BP_INFLATION_TARGET) * 110.0f);
+        if (w < 0) w = 0;
+        if (w > 110) w = 110;
+        display.fillRect(9, 54, w, 4, SSD1306_WHITE);
+    }
+    else if (d.bpState == BP_STATE_DEFLATING) {
+        display.println("DEFLATING CUFF...");
+        display.setCursor(0, 32);
+        display.setTextSize(2);
+        display.print((int)d.bpCuffPressure);
+        display.setTextSize(1);
+        display.println(" mmHg");
+        
+        // Progress bar (deflation)
+        display.drawRect(5, 52, 118, 8, SSD1306_WHITE);
+        float progress = (d.bpCuffPressure - (float)BP_DEFLATION_COMPLETE_LIMIT) / 
+                         ((float)BP_INFLATION_TARGET - (float)BP_DEFLATION_COMPLETE_LIMIT);
+        int w = (int)(progress * 110.0f);
+        if (w < 0) w = 0;
+        if (w > 110) w = 110;
+        display.fillRect(9, 54, w, 4, SSD1306_WHITE);
+    }
+    else if (d.bpState == BP_STATE_PROCESSING) {
+        display.println("ANALYZING PULSES...");
+        display.setCursor(15, 36);
+        display.setTextSize(1);
+        display.println("Processing...");
+        display.setCursor(15, 48);
+        display.println("Do not move.");
+    }
+    else if (d.bpState == BP_STATE_COMPLETE) {
+        display.println("MEASURE COMPLETE");
+        display.setCursor(0, 32);
+        display.setTextSize(2);
+        display.print(d.bpSystolic);
+        display.print("/");
+        display.print(d.bpDiastolic);
+        display.setTextSize(1);
+        display.println(" mmHg");
+        
+        display.setCursor(0, 52);
+        display.print("MAP: ");
+        display.print(d.bpMAP);
+        display.print(" mmHg");
+    }
 }
