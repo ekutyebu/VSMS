@@ -1038,6 +1038,32 @@ function cancelBPMeasurement() {
 // 13. SINGLE & CONTINUOUS VITAL CHECK ROUTINES
 function startLocalSingleCheck() {
     console.log("Starting single vitals check...");
+    
+    // Optimistic Update: Show countdown overlay immediately
+    const countdownOverlay = document.getElementById('countdown-overlay');
+    const collectingOverlay = document.getElementById('collecting-overlay');
+    if (countdownOverlay && collectingOverlay) {
+        countdownOverlay.classList.remove('hidden');
+        collectingOverlay.classList.add('hidden');
+        
+        const countdownCircle = document.getElementById('local-countdown-circle');
+        const countdownBar = document.getElementById('local-countdown-bar');
+        if (countdownCircle) countdownCircle.innerText = "10";
+        if (countdownBar) {
+            countdownBar.style.width = "100%";
+        }
+    }
+    
+    // Disable buttons optimistically
+    const checkVitalsBtn = document.getElementById('btn-check-vitals');
+    const contMonitorBtn = document.getElementById('btn-continuous-monitor');
+    if (checkVitalsBtn && contMonitorBtn) {
+        checkVitalsBtn.disabled = true;
+        checkVitalsBtn.style.opacity = "0.5";
+        checkVitalsBtn.style.pointerEvents = "none";
+        contMonitorBtn.disabled = true;
+    }
+
     fetch(`/api/start_single?name=${encodeURIComponent(patientInfo.name)}&id=${encodeURIComponent(patientInfo.idNumber)}&contact=${encodeURIComponent(patientInfo.emergencyContact)}`)
         .catch(() => {});
     if (websocket && websocket.readyState === WebSocket.OPEN) {
@@ -1047,9 +1073,30 @@ function startLocalSingleCheck() {
 
 function toggleLocalContinuousMonitoring() {
     const contMonitorBtn = document.getElementById('btn-continuous-monitor');
+    const checkVitalsBtn = document.getElementById('btn-check-vitals');
+    
     if (contMonitorBtn && contMonitorBtn.innerHTML.includes("Stop")) {
+        // Optimistically show Stopped state
+        contMonitorBtn.innerHTML = `<i class="fa-solid fa-play"></i> Start Continuous`;
+        contMonitorBtn.className = "btn-secondary";
+        if (checkVitalsBtn) {
+            checkVitalsBtn.disabled = false;
+            checkVitalsBtn.style.opacity = "1";
+            checkVitalsBtn.style.pointerEvents = "auto";
+        }
         stopLocalMonitoring();
     } else {
+        // Optimistically show Started state
+        if (contMonitorBtn) {
+            contMonitorBtn.innerHTML = `<i class="fa-solid fa-circle-stop animate-pulse"></i> Stop Continuous`;
+            contMonitorBtn.className = "btn-danger";
+        }
+        if (checkVitalsBtn) {
+            checkVitalsBtn.disabled = true;
+            checkVitalsBtn.style.opacity = "0.5";
+            checkVitalsBtn.style.pointerEvents = "none";
+        }
+        
         console.log("Starting continuous vitals monitoring...");
         fetch('/api/start_continuous')
             .catch(() => {});
@@ -1061,6 +1108,26 @@ function toggleLocalContinuousMonitoring() {
 
 function stopLocalMonitoring() {
     console.log("Stopping vitals monitoring...");
+    
+    // Optimistic reset on overlays and buttons
+    const countdownOverlay = document.getElementById('countdown-overlay');
+    const collectingOverlay = document.getElementById('collecting-overlay');
+    if (countdownOverlay) countdownOverlay.classList.add('hidden');
+    if (collectingOverlay) collectingOverlay.classList.add('hidden');
+    
+    const contMonitorBtn = document.getElementById('btn-continuous-monitor');
+    const checkVitalsBtn = document.getElementById('btn-check-vitals');
+    if (contMonitorBtn) {
+        contMonitorBtn.innerHTML = `<i class="fa-solid fa-play"></i> Start Continuous`;
+        contMonitorBtn.className = "btn-secondary";
+        contMonitorBtn.disabled = false;
+    }
+    if (checkVitalsBtn) {
+        checkVitalsBtn.disabled = false;
+        checkVitalsBtn.style.opacity = "1";
+        checkVitalsBtn.style.pointerEvents = "auto";
+    }
+
     fetch('/api/stop_monitoring')
         .catch(() => {});
     if (websocket && websocket.readyState === WebSocket.OPEN) {

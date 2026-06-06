@@ -749,6 +749,12 @@ export default function Dashboard() {
 
   const startSingleCheck = async (pat) => {
     console.log(`Starting single vitals check for patient ${pat.name}...`);
+    // Optimistically show the countdown modal overlay immediately on click
+    setTelemetry(prev => ({
+      ...prev,
+      monitorMode: 1,
+      countdown: 10
+    }));
     await activatePatient(pat.idNumber);
     let targetUrl = `http://${esp32Ip}/api/start_single?name=${encodeURIComponent(pat.name)}&id=${encodeURIComponent(pat.idNumber)}&contact=${encodeURIComponent(pat.emergencyContact)}`;
     if (esp32Ip === 'localhost' || esp32Ip === '127.0.0.1' || esp32Ip.startsWith('localhost:')) {
@@ -762,6 +768,11 @@ export default function Dashboard() {
 
   const startContinuousMonitoring = () => {
     console.log("Starting continuous vitals monitoring...");
+    // Optimistically toggle to Stop Monitoring / Continuous mode immediately
+    setTelemetry(prev => ({
+      ...prev,
+      monitorMode: 3
+    }));
     let targetUrl = `http://${esp32Ip}/api/start_continuous`;
     if (esp32Ip === 'localhost' || esp32Ip === '127.0.0.1' || esp32Ip.startsWith('localhost:')) {
       targetUrl = `/api/start_continuous`;
@@ -774,6 +785,11 @@ export default function Dashboard() {
 
   const stopMonitoring = () => {
     console.log("Stopping vitals monitoring...");
+    // Optimistically revert to normal mode immediately
+    setTelemetry(prev => ({
+      ...prev,
+      monitorMode: 0
+    }));
     let targetUrl = `http://${esp32Ip}/api/stop_monitoring`;
     if (esp32Ip === 'localhost' || esp32Ip === '127.0.0.1' || esp32Ip.startsWith('localhost:')) {
       targetUrl = `/api/stop_monitoring`;
@@ -1229,7 +1245,8 @@ export default function Dashboard() {
                           <span className="text-[10px] text-text-muted font-medium block sm:hidden">Action:</span>
                           <button 
                             onClick={() => startSingleCheck(item)} 
-                            className="px-3.5 py-1.5 bg-colorBlue/10 hover:bg-colorBlue/20 text-colorBlue border border-colorBlue/20 transition-all text-xs font-semibold rounded-lg flex items-center gap-1.5"
+                            disabled={telemetry.monitorMode > 0}
+                            className="px-3.5 py-1.5 bg-colorBlue/10 hover:bg-colorBlue/20 disabled:opacity-40 text-colorBlue border border-colorBlue/20 transition-all text-xs font-semibold rounded-lg flex items-center gap-1.5"
                           >
                             <i className="fa-solid fa-heart-pulse"></i> Check Vitals
                           </button>
