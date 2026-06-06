@@ -134,6 +134,14 @@
                                 <span class="value" id="summary-contact">Loading...</span>
                             </div>
                         </div>
+                        <div class="summary-actions" style="margin-top: 15px; display: flex; gap: 10px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+                            <button class="btn-primary" id="btn-check-vitals" onclick="startLocalSingleCheck()" style="padding: 0.5rem 1rem; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 5px;">
+                                <i class="fa-solid fa-heart-pulse"></i> Check Vitals
+                            </button>
+                            <button class="btn-secondary" id="btn-continuous-monitor" onclick="toggleLocalContinuousMonitoring()" style="padding: 0.5rem 1rem; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 5px;">
+                                <i class="fa-solid fa-play"></i> Start Continuous
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Vital Rings Overview -->
@@ -432,6 +440,7 @@
                         <table class="data-table" id="logs-table">
                             <thead>
                                 <tr>
+                                    <th>Patient ID</th>
                                     <th>Date</th>
                                     <th>Time</th>
                                     <th>HR (BPM)</th>
@@ -444,7 +453,7 @@
                             </thead>
                             <tbody id="logs-table-body">
                                 <tr>
-                                    <td colspan="8" class="text-center text-muted">Click Refresh to load SD Card history data.</td>
+                                    <td colspan="9" class="text-center text-muted">Click Refresh to load SD Card history data.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -544,6 +553,41 @@
                 </div>
             </section>
         </main>
+    </div>
+
+    <!-- Vitals Countdown Modal Overlay -->
+    <div id="countdown-overlay" class="modal-overlay hidden" style="position: fixed; inset: 0; background: rgba(11, 15, 25, 0.85); backdrop-filter: blur(8px); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 20px;">
+        <div class="glass-card" style="max-width: 400px; width: 100%; text-align: center; padding: 30px; display: flex; flex-direction: column; align-items: center; gap: 20px; border: 1px solid var(--border-color); background: var(--bg-card); border-radius: 24px;">
+            <div id="local-countdown-circle" style="width: 80px; height: 80px; border-radius: 50%; background: rgba(59, 130, 246, 0.1); border: 2px solid rgba(59, 130, 246, 0.2); display: flex; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: 800; color: var(--color-blue);">
+                10
+            </div>
+            <div>
+                <h3 style="color: #fff; font-size: 1.25rem; font-weight: 700; margin: 0 0 5px 0;">Preparing Vitals Check</h3>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin: 0;">Please prepare your sensors. Single check will start shortly...</p>
+            </div>
+            <div style="width: 100%; height: 8px; background: rgba(0, 0, 0, 0.4); border-radius: 4px; overflow: hidden; border: 1px solid var(--border-color);">
+                <div id="local-countdown-bar" style="width: 100%; height: 100%; background: var(--color-blue); transition: width 1s linear;"></div>
+            </div>
+            <button class="btn-danger" onclick="stopLocalMonitoring()" style="padding: 0.5rem 1.2rem; font-size: 0.8rem; font-weight: 600;">
+                Cancel Vitals Check
+            </button>
+        </div>
+    </div>
+
+    <!-- Vitals Collecting Modal Overlay -->
+    <div id="collecting-overlay" class="modal-overlay hidden" style="position: fixed; inset: 0; background: rgba(11, 15, 25, 0.85); backdrop-filter: blur(8px); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 20px;">
+        <div class="glass-card" style="max-width: 400px; width: 100%; text-align: center; padding: 30px; display: flex; flex-direction: column; align-items: center; gap: 20px; border: 1px solid var(--border-color); background: var(--bg-card); border-radius: 24px;">
+            <div style="width: 60px; height: 60px; border-radius: 50%; background: rgba(16, 185, 129, 0.1); display: flex; align-items: center; justify-content: center; font-size: 1.8rem; color: var(--color-normal);">
+                <i class="fa-solid fa-heartbeat pulse-icon"></i>
+            </div>
+            <div>
+                <h3 style="color: #fff; font-size: 1.25rem; font-weight: 700; margin: 0 0 5px 0;">Reading Vitals...</h3>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin: 0;">Capturing snapshot. Please hold still for 5 seconds...</p>
+            </div>
+            <div style="width: 100%; height: 8px; background: rgba(0, 0, 0, 0.4); border-radius: 4px; overflow: hidden; border: 1px solid var(--border-color);">
+                <div style="width: 100%; height: 100%; background: linear-gradient(90deg, #10b981, #14b8a6, #10b981); background-size: 200% auto; animation: pulse 1.5s linear infinite;"></div>
+            </div>
+        </div>
     </div>
 
     <!-- Leaflet JS Map dependency -->

@@ -80,6 +80,21 @@ bool WebServerManager::begin(StorageManager* storageMgr, SensorManager* sensorMg
                 Serial.println("[WebServerManager] Created default patient.json");
             }
         }
+        
+        // Load active patient details on startup
+        File f = SPIFFS.open("/patient.json", FILE_READ);
+        if (f) {
+            StaticJsonDocument<512> doc;
+            DeserializationError err = deserializeJson(doc, f);
+            if (!err) {
+                const char* name = doc["name"] | "John Doe";
+                const char* id = doc["idNumber"] | "PT-2026-9841";
+                const char* contact = doc["emergencyContact"] | "+1234567890";
+                sensors->setPatientInfo(name, id, contact);
+                Serial.printf("[WebServerManager] Loaded startup patient: %s (%s), Contact: %s\n", name, id, contact);
+            }
+            f.close();
+        }
     } else {
         Serial.println("[WebServerManager] Error mounting SPIFFS!");
     }
@@ -138,17 +153,133 @@ void WebServerManager::setupRoutes() {
     
     // API: Save patient metadata to LittleFS/SPIFFS
     server.on("/api/save_patient", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
-        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            StaticJsonDocument<512> doc;
+            DeserializationError err = deserializeJson(doc, data, len);
+            if (err) {
+                request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid JSON payload\"}");
+                return;
+            }
+            
+            const char* name = doc["name"] | "John Doe";
+            const char* id = doc["idNumber"] | "PT-2026-9841";
+            const char* contact = doc["emergencyContact"];
+            
+            if (!contact) {
+                request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing emergencyContact field\"}");
+                return;
+            }
+            
+            // Cameroon standard validation
+            String phone = String(contact);
+            phone.trim();
+            if (phone.startsWith("+237")) {
+                phone = phone.substring(4);
+            } else if (phone.startsWith("237")) {
+                phone = phone.substring(3);
+            }
+            
+            bool valid = true;
+            if (phone.length() != 9) {
+                valid = false;
+            } else {
+                char first = phone.charAt(0);
+                if (first != '2' && first != '6') {
+                    valid = false;
+                }
+                for (int i = 1; i < 9; i++) {
+                    if (!isDigit(phone.charAt(i))) {
+                        valid = false;
+                        break;
+                    }
+                }
+            }
+            
+            if (!valid) {
+                request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid Cameroon telephone standard (must be 9 digits starting with 6 or 2)\"}");
+                return;
+            }
+            
             File file = SPIFFS.open("/patient.json", FILE_WRITE);
             if (file) {
                 file.write(data, len);
                 file.close();
+                sensors->setPatientInfo(name, id, contact);
                 request->send(200, "application/json", "{\"status\":\"success\"}");
             } else {
-                request->send(500, "application/json", "{\"status\":\"error\",\"message\":\"Failed to write config file\"}");
+                request->send(500, "application/json", "{\"status\":\"error\",\"message\":\"Failed to write patient file\"}");
             }
         }
     );
+    
+    // API: Start Countdown-Based Single-Shot Vitals Check
+    server.on("/api/start_single", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        String name = "John Doe";
+        String id = "PT-2026-9841";
+        String contact = "+1234567890";
+        
+        if (request->hasParam("name")) name = request->getParam("name")->value();
+        if (request->hasParam("id")) id = request->getParam("id")->value();
+        if (request->hasParam("contact")) contact = request->getParam("contact")->value();
+        
+        // Cameroon standard validation
+        String phone = contact;
+        phone.trim();
+        if (phone.startsWith("+237")) {
+            phone = phone.substring(4);
+        } else if (phone.startsWith("237")) {
+            phone = phone.substring(3);
+        }
+        
+        bool valid = true;
+        if (phone.length() != 9) {
+            valid = false;
+        } else {
+            char first = phone.charAt(0);
+            if (first != '2' && first != '6') {
+                valid = false;
+            }
+            for (int i = 1; i < 9; i++) {
+                if (!isDigit(phone.charAt(i))) {
+                    valid = false;
+                    break;
+                }
+            }
+        }
+        
+        if (!valid) {
+            request->send(400, "application/json", "{\"status\":\"error\",\"message\":\"Invalid Cameroon phone number standard\"}");
+            return;
+        }
+        
+        sensors->setPatientInfo(name, id, contact);
+        sensors->startSingleCheck();
+        
+        // Keep SPIFFS patient.json updated with active patient
+        File file = SPIFFS.open("/patient.json", FILE_WRITE);
+        if (file) {
+            StaticJsonDocument<256> pDoc;
+            pDoc["name"] = name;
+            pDoc["idNumber"] = id;
+            pDoc["emergencyContact"] = contact;
+            serializeJson(pDoc, file);
+            file.close();
+        }
+        
+        request->send(200, "application/json", "{\"status\":\"success\",\"message\":\"Single check countdown initiated\"}");
+    });
+    
+    // API: Start Continuous Vitals Monitoring
+    server.on("/api/start_continuous", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        sensors->startContinuousMonitoring();
+        request->send(200, "application/json", "{\"status\":\"success\",\"message\":\"Continuous monitoring started\"}");
+    });
+    
+    // API: Stop Vitals Monitoring
+    server.on("/api/stop_monitoring", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        sensors->stopMonitoring();
+        request->send(200, "application/json", "{\"status\":\"success\",\"message\":\"Monitoring stopped\"}");
+    });
     
     // API: Adjust simulation alert states for debugging
     server.on("/api/toggle_sim", HTTP_GET, [this](AsyncWebServerRequest *request) {
@@ -208,7 +339,7 @@ void WebServerManager::handleWebSocketMessage(void *arg, uint8_t *data, size_t l
         Serial.printf("[WebSocket] Received message: %s\n", message.c_str());
         
         // Handle potential client requests sent via WebSocket (e.g. toggle commands)
-        StaticJsonDocument<256> doc;
+        StaticJsonDocument<512> doc;
         DeserializationError err = deserializeJson(doc, message);
         if (!err) {
             if (doc.containsKey("requestSimLevel")) {
@@ -223,6 +354,98 @@ void WebServerManager::handleWebSocketMessage(void *arg, uint8_t *data, size_t l
             }
             if (doc.containsKey("cancelBP")) {
                 sensors->cancelBPMeasurement();
+            }
+            if (doc.containsKey("syncPatient")) {
+                JsonObject syncP = doc["syncPatient"];
+                const char* name = syncP["name"] | "John Doe";
+                const char* id = syncP["idNumber"] | "PT-2026-9841";
+                const char* contact = syncP["emergencyContact"] | "+1234567890";
+                
+                // Cameroon standard validation
+                String phone = String(contact);
+                phone.trim();
+                if (phone.startsWith("+237")) {
+                    phone = phone.substring(4);
+                } else if (phone.startsWith("237")) {
+                    phone = phone.substring(3);
+                }
+                
+                bool valid = true;
+                if (phone.length() != 9) {
+                    valid = false;
+                } else {
+                    char first = phone.charAt(0);
+                    if (first != '2' && first != '6') {
+                        valid = false;
+                    }
+                    for (int i = 1; i < 9; i++) {
+                        if (!isDigit(phone.charAt(i))) {
+                            valid = false;
+                            break;
+                        }
+                    }
+                }
+                
+                if (valid) {
+                    sensors->setPatientInfo(name, id, contact);
+                    File file = SPIFFS.open("/patient.json", FILE_WRITE);
+                    if (file) {
+                        serializeJson(syncP, file);
+                        file.close();
+                        Serial.println("[WebServerManager] Synced active patient via WebSocket: " + String(name));
+                    }
+                } else {
+                    Serial.println("[WebServerManager] WebSocket sync rejected: invalid Cameroon contact: " + String(contact));
+                }
+            }
+            if (doc.containsKey("startSingle")) {
+                JsonObject p = doc["startSingle"];
+                const char* name = p["name"] | "John Doe";
+                const char* id = p["idNumber"] | "PT-2026-9841";
+                const char* contact = p["emergencyContact"] | "+1234567890";
+                
+                // Cameroon standard validation
+                String phone = String(contact);
+                phone.trim();
+                if (phone.startsWith("+237")) {
+                    phone = phone.substring(4);
+                } else if (phone.startsWith("237")) {
+                    phone = phone.substring(3);
+                }
+                
+                bool valid = true;
+                if (phone.length() != 9) {
+                    valid = false;
+                } else {
+                    char first = phone.charAt(0);
+                    if (first != '2' && first != '6') {
+                        valid = false;
+                    }
+                    for (int i = 1; i < 9; i++) {
+                        if (!isDigit(phone.charAt(i))) {
+                            valid = false;
+                            break;
+                        }
+                    }
+                }
+                
+                if (valid) {
+                    sensors->setPatientInfo(name, id, contact);
+                    sensors->startSingleCheck();
+                    File file = SPIFFS.open("/patient.json", FILE_WRITE);
+                    if (file) {
+                        serializeJson(p, file);
+                        file.close();
+                    }
+                } else {
+                    Serial.println("[WebServerManager] WebSocket startSingle rejected: invalid Cameroon contact: " + String(contact));
+                }
+            }
+            if (doc.containsKey("startContinuous")) {
+                sensors->startContinuousMonitoring();
+            }
+            if (doc.containsKey("stopMonitoring")) {
+                sensors->stopMonitoring();
             }
         }
     }
@@ -269,6 +492,10 @@ void WebServerManager::update(AlertLevel activeAlertLevel) {
             doc["systemAlertLevel"] = (int)activeAlertLevel;
             doc["sdReady"] = storage->isReady();
             doc["wifiConnected"] = wifiConnected;
+            
+            doc["monitorMode"] = (int)sensors->getMonitoringMode();
+            doc["countdown"] = sensors->getCountdownSeconds();
+            doc["activePatientId"] = sensors->getActivePatientId();
             
             // Build ECG waveform buffer
             JsonArray ecgArr = doc.createNestedArray("ecgBuffer");

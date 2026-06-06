@@ -318,6 +318,58 @@ function handleTelemetry(t) {
         document.getElementById('ecg-leads-badge').innerText = "LEADS OFF";
         ecgQueue = []; // Clear queue
     }
+
+    // 3.7 Handle Countdown and Collection Modal Overlays
+    const countdownOverlay = document.getElementById('countdown-overlay');
+    const collectingOverlay = document.getElementById('collecting-overlay');
+    
+    if (countdownOverlay && collectingOverlay) {
+        if (t.monitorMode === 1) { // MONITOR_COUNTDOWN
+            countdownOverlay.classList.remove('hidden');
+            collectingOverlay.classList.add('hidden');
+            
+            const countdownCircle = document.getElementById('local-countdown-circle');
+            const countdownBar = document.getElementById('local-countdown-bar');
+            if (countdownCircle) countdownCircle.innerText = t.countdown;
+            if (countdownBar) {
+                countdownBar.style.width = `${(t.countdown / 10) * 100}%`;
+            }
+        } else if (t.monitorMode === 2) { // MONITOR_SINGLE_COLLECT
+            countdownOverlay.classList.add('hidden');
+            collectingOverlay.classList.remove('hidden');
+        } else {
+            countdownOverlay.classList.add('hidden');
+            collectingOverlay.classList.add('hidden');
+        }
+    }
+    
+    // 3.8 Update the Patient Details Card buttons
+    const checkVitalsBtn = document.getElementById('btn-check-vitals');
+    const contMonitorBtn = document.getElementById('btn-continuous-monitor');
+    
+    if (checkVitalsBtn && contMonitorBtn) {
+        if (t.monitorMode === 3) { // MONITOR_CONTINUOUS
+            contMonitorBtn.innerHTML = `<i class="fa-solid fa-circle-stop animate-pulse"></i> Stop Continuous`;
+            contMonitorBtn.className = "btn-danger";
+            checkVitalsBtn.disabled = true;
+            checkVitalsBtn.style.opacity = "0.5";
+            checkVitalsBtn.style.pointerEvents = "none";
+        } else {
+            contMonitorBtn.innerHTML = `<i class="fa-solid fa-play"></i> Start Continuous`;
+            contMonitorBtn.className = "btn-secondary";
+            if (t.monitorMode > 0) {
+                contMonitorBtn.disabled = true;
+                checkVitalsBtn.disabled = true;
+                checkVitalsBtn.style.opacity = "0.5";
+                checkVitalsBtn.style.pointerEvents = "none";
+            } else {
+                contMonitorBtn.disabled = false;
+                checkVitalsBtn.disabled = false;
+                checkVitalsBtn.style.opacity = "1";
+                checkVitalsBtn.style.pointerEvents = "auto";
+            }
+        }
+    }
 }
 
 // 4. DYNAMIC CARD LIGHTING GLOWS
@@ -590,15 +642,26 @@ function updatePatientFields(p) {
 function savePatientInfo(e) {
     e.preventDefault();
     
+    const contactInput = document.getElementById('p-contact').value.trim();
+    // Cameroon phone standard validation:
+    // Strip optional +237 or 237 prefix, then must be 9 digits starting with 6 or 2
+    const cleanPhone = contactInput.replace(/^\+237|^237/, '');
+    const msgBox = document.getElementById('patient-save-msg');
+    if (!/^[26]\d{8}$/.test(cleanPhone)) {
+        msgBox.className = "message-box btn-danger";
+        msgBox.innerText = "Error: Contact number must follow Cameroon standards (9 digits starting with 6 or 2, optionally prefixed with +237 or 237).";
+        msgBox.classList.remove('hidden');
+        setTimeout(() => msgBox.classList.add('hidden'), 5000);
+        return;
+    }
+
     const info = {
         name: document.getElementById('p-name').value,
         age: parseInt(document.getElementById('p-age').value),
         gender: document.getElementById('p-gender').value,
         idNumber: document.getElementById('p-id').value,
-        emergencyContact: document.getElementById('p-contact').value
+        emergencyContact: contactInput
     };
-    
-    const msgBox = document.getElementById('patient-save-msg');
     
     fetch('/api/save_patient', {
         method: 'POST',
@@ -694,17 +757,18 @@ function parseCSVLogs(csvText) {
     for (let i = 1; i < lines.length; i++) {
         if (!lines[i]) continue;
         const cols = lines[i].split(',');
-        if (cols.length < 8) continue;
+        if (cols.length < 9) continue;
         
         historicalLogs.push({
-            date: cols[0],
-            time: cols[1],
-            hr: cols[2],
-            spo2: cols[3],
-            temp: cols[4],
-            bp: cols[5],
-            ecg: cols[6],
-            gps: cols[7]
+            patientId: cols[0],
+            date: cols[1],
+            time: cols[2],
+            hr: cols[3],
+            spo2: cols[4],
+            temp: cols[5],
+            bp: cols[6],
+            ecg: cols[7],
+            gps: cols[8]
         });
     }
     // Sort logs descending (newest first)
@@ -715,7 +779,7 @@ function renderLogsTable() {
     const tableBody = document.getElementById('logs-table-body');
     
     if (historicalLogs.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">No vital signs logs stored in SD database.</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">No vital signs logs stored in SD database.</td></tr>`;
         return;
     }
     
@@ -730,6 +794,7 @@ function renderLogsTable() {
         
         html += `
             <tr>
+                <td>${row.patientId || '--'}</td>
                 <td>${row.date}</td>
                 <td>${row.time}</td>
                 <td><strong>${row.hr}</strong></td>
@@ -743,7 +808,7 @@ function renderLogsTable() {
     }
     
     if (historicalLogs.length > 50) {
-        html += `<tr><td colspan="8" class="text-center text-muted" style="font-size:11px;">... Showing last 50 logs. View full file in Reports section. ...</td></tr>`;
+        html += `<tr><td colspan="9" class="text-center text-muted" style="font-size:11px;">... Showing last 50 logs. View full file in Reports section. ...</td></tr>`;
     }
     
     tableBody.innerHTML = html;
@@ -813,9 +878,9 @@ function filterLogsByPeriod(period) {
 }
 
 function exportCSV(rows, period) {
-    let csvContent = "Date,Time,HeartRate(BPM),SpO2(%),Temperature(C),BloodPressure,ECGStatus,GPSLocation\n";
+    let csvContent = "PatientID,Date,Time,HeartRate(BPM),SpO2(%),Temperature(C),BloodPressure,ECGStatus,GPSLocation\n";
     rows.forEach(r => {
-        csvContent += `${r.date},${r.time},${r.hr},${r.spo2},${r.temp},${r.bp},${r.ecg},"${r.gps}"\n`;
+        csvContent += `${r.patientId || '--'},${r.date},${r.time},${r.hr},${r.spo2},${r.temp},${r.bp},${r.ecg},"${r.gps}"\n`;
     });
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -831,10 +896,10 @@ function exportCSV(rows, period) {
 function exportExcel(rows, period) {
     // Construct worksheet structure
     const data = [
-        ["Date", "Time", "Heart Rate (BPM)", "SpO2 (%)", "Temperature (C)", "Blood Pressure", "ECG Status", "GPS Location"]
+        ["Patient ID", "Date", "Time", "Heart Rate (BPM)", "SpO2 (%)", "Temperature (C)", "Blood Pressure", "ECG Status", "GPS Location"]
     ];
     rows.forEach(r => {
-        data.push([r.date, r.time, parseInt(r.hr), parseInt(r.spo2), parseFloat(r.temp), r.bp, r.ecg, r.gps]);
+        data.push([r.patientId || '--', r.date, r.time, parseInt(r.hr), parseInt(r.spo2), parseFloat(r.temp), r.bp, r.ecg, r.gps]);
     });
     
     const wb = XLSX.utils.book_new();
@@ -915,12 +980,12 @@ function exportPDF(rows, period) {
     
     const tableRows = [];
     rows.forEach(r => {
-        tableRows.push([r.date, r.time, r.hr, `${r.spo2}%`, `${r.temp}C`, r.bp, r.ecg, r.gps]);
+        tableRows.push([r.patientId || '--', r.date, r.time, r.hr, `${r.spo2}%`, `${r.temp}C`, r.bp, r.ecg, r.gps]);
     });
     
     doc.autoTable({
         startY: doc.lastAutoTable.finalY + 16,
-        head: [['Date', 'Time', 'HR', 'SpO2', 'Temp', 'BP', 'ECG Status', 'GPS Coordinates']],
+        head: [['Patient ID', 'Date', 'Time', 'HR', 'SpO2', 'Temp', 'BP', 'ECG Status', 'GPS Coordinates']],
         body: tableRows,
         theme: 'grid',
         headStyles: { fillColor: [59, 130, 246] },
@@ -967,5 +1032,38 @@ function cancelBPMeasurement() {
     
     if (websocket && websocket.readyState === WebSocket.OPEN) {
         websocket.send(JSON.stringify({ cancelBP: true }));
+    }
+}
+
+// 13. SINGLE & CONTINUOUS VITAL CHECK ROUTINES
+function startLocalSingleCheck() {
+    console.log("Starting single vitals check...");
+    fetch(`/api/start_single?name=${encodeURIComponent(patientInfo.name)}&id=${encodeURIComponent(patientInfo.idNumber)}&contact=${encodeURIComponent(patientInfo.emergencyContact)}`)
+        .catch(() => {});
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send(JSON.stringify({ startSingle: patientInfo }));
+    }
+}
+
+function toggleLocalContinuousMonitoring() {
+    const contMonitorBtn = document.getElementById('btn-continuous-monitor');
+    if (contMonitorBtn && contMonitorBtn.innerHTML.includes("Stop")) {
+        stopLocalMonitoring();
+    } else {
+        console.log("Starting continuous vitals monitoring...");
+        fetch('/api/start_continuous')
+            .catch(() => {});
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+            websocket.send(JSON.stringify({ startContinuous: true }));
+        }
+    }
+}
+
+function stopLocalMonitoring() {
+    console.log("Stopping vitals monitoring...");
+    fetch('/api/stop_monitoring')
+        .catch(() => {});
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send(JSON.stringify({ stopMonitoring: true }));
     }
 }

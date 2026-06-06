@@ -19,7 +19,15 @@ SensorManager::SensorManager()
       hrSampleCount(0), 
       hrSum(0.0), 
       simTick(0), 
-      simAlertLevel(STATUS_NORMAL) 
+      simAlertLevel(STATUS_NORMAL),
+      monitorMode(MONITOR_OFF),
+      countdownSeconds(0),
+      lastCountdownSecondMs(0),
+      collectStartMs(0),
+      singleCollectCompleteFlag(false),
+      activePatientName("John Doe"),
+      activePatientId("PT-2026-9841"),
+      activePatientEmergencyContact("+1234567890")
 {
     // Initialize data struct with default values
     data.heartRate = 0.0;
@@ -142,6 +150,26 @@ void SensorManager::update() {
             readMAX30102();
         } else {
             simulateMAX30102();
+        }
+    }
+
+    // 3. Handle Vitals Check Countdown State transitions
+    if (monitorMode == MONITOR_COUNTDOWN) {
+        if (now - lastCountdownSecondMs >= 1000) {
+            lastCountdownSecondMs = now;
+            countdownSeconds--;
+            Serial.printf("[SensorManager] Vitals Check Countdown: %d s remaining for %s\n", countdownSeconds, activePatientName.c_str());
+            if (countdownSeconds <= 0) {
+                monitorMode = MONITOR_SINGLE_COLLECT;
+                collectStartMs = now;
+                Serial.println("[SensorManager] Countdown complete. Collecting vitals snapshot...");
+            }
+        }
+    } else if (monitorMode == MONITOR_SINGLE_COLLECT) {
+        if (now - collectStartMs >= 5000) { // 5-second sampling window
+            Serial.println("[SensorManager] Single vitals collection complete.");
+            singleCollectCompleteFlag = true;
+            monitorMode = MONITOR_OFF;
         }
     }
 }
@@ -295,6 +323,9 @@ void SensorManager::readBloodPressure() {
     if (bpCurrentState == BP_STATE_IDLE) {
         data.bpState = BP_STATE_IDLE;
         data.bpCuffPressure = 0.0f;
+        if (ALLOW_SENSOR_SIMULATION) {
+            simulateBloodPressure();
+        }
         return;
     }
     
@@ -717,4 +748,32 @@ void SensorManager::resetStats() {
     data.avgHeartRate = 0.0;
     hrSampleCount = 0;
     hrSum = 0.0;
+}
+
+void SensorManager::setPatientInfo(const String& name, const String& id, const String& contact) {
+    activePatientName = name;
+    activePatientId = id;
+    activePatientEmergencyContact = contact;
+    Serial.printf("[SensorManager] Patient set: %s (%s) | Contact: %s\n", 
+                  activePatientName.c_str(), activePatientId.c_str(), activePatientEmergencyContact.c_str());
+}
+
+void SensorManager::startSingleCheck() {
+    monitorMode = MONITOR_COUNTDOWN;
+    countdownSeconds = 10;
+    lastCountdownSecondMs = millis();
+    singleCollectCompleteFlag = false;
+    Serial.println("[SensorManager] Vitals single check triggered. Countdown starting...");
+}
+
+void SensorManager::startContinuousMonitoring() {
+    monitorMode = MONITOR_CONTINUOUS;
+    singleCollectCompleteFlag = false;
+    Serial.println("[SensorManager] Vitals continuous monitoring started.");
+}
+
+void SensorManager::stopMonitoring() {
+    monitorMode = MONITOR_OFF;
+    singleCollectCompleteFlag = false;
+    Serial.println("[SensorManager] Monitoring cancelled/stopped.");
 }

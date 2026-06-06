@@ -9,7 +9,7 @@ class DisplayManager {
 public:
     DisplayManager();
     bool begin();
-    void update(const SensorData& sensorData, AlertLevel systemAlertLevel, bool wifiConnected, bool sdReady);
+    void update(const SensorData& sensorData, AlertLevel systemAlertLevel, bool wifiConnected, bool sdReady, int monitorMode = 0, int countdownSeconds = 0, const String& activePatientName = "");
     void setPage(int pageIndex);
     int getCurrentPage() const { return currentPage; }
 
@@ -27,6 +27,8 @@ private:
     void drawAlertBanner(AlertLevel alert);
     void drawHeader(const char* title);
     void drawBPMeasurementPage(const SensorData& d);
+    void drawCountdownPage(const String& name, int seconds);
+    void drawCollectingPage(const String& name);
 };
 
 #endif // DISPLAY_MANAGER_H

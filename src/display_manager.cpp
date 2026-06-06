@@ -61,10 +61,26 @@ bool DisplayManager::begin() {
     return oledOnline;
 }
 
-void DisplayManager::update(const SensorData& sensorData, AlertLevel systemAlertLevel, bool wifiConnected, bool sdReady) {
+void DisplayManager::update(const SensorData& sensorData, AlertLevel systemAlertLevel, bool wifiConnected, bool sdReady, int monitorMode, int countdownSeconds, const String& activePatientName) {
     if (!oledOnline) return;
     
     unsigned long currentMillis = millis();
+    
+    // Override page rendering if Countdown is active
+    if (monitorMode == 1) { // MONITOR_COUNTDOWN
+        display.clearDisplay();
+        drawCountdownPage(activePatientName, countdownSeconds);
+        display.display();
+        return;
+    }
+    
+    // Override page rendering if Single Vitals Collection is active
+    if (monitorMode == 2) { // MONITOR_SINGLE_COLLECT
+        display.clearDisplay();
+        drawCollectingPage(activePatientName);
+        display.display();
+        return;
+    }
     
     // Override page rendering if Blood Pressure Measurement is active
     if (sensorData.bpState != BP_STATE_IDLE) {
@@ -358,4 +374,46 @@ void DisplayManager::drawBPMeasurementPage(const SensorData& d) {
         display.print(d.bpMAP);
         display.print(" mmHg");
     }
+}
+
+void DisplayManager::drawCountdownPage(const String& name, int seconds) {
+    display.drawRect(0, 0, 128, 64, SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(8, 6);
+    display.println("CHECKING VITALS");
+    display.drawLine(5, 16, 122, 16, SSD1306_WHITE);
+    
+    display.setCursor(8, 22);
+    display.print("Patient: ");
+    String shortName = name;
+    if (shortName.length() > 10) shortName = shortName.substring(0, 10);
+    display.println(shortName);
+    
+    display.setCursor(8, 36);
+    display.println("Ready in:");
+    
+    display.setTextSize(3);
+    display.setCursor(85, 32);
+    display.print(seconds);
+}
+
+void DisplayManager::drawCollectingPage(const String& name) {
+    display.drawRect(0, 0, 128, 64, SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(8, 6);
+    display.println("READING VITALS...");
+    display.drawLine(5, 16, 122, 16, SSD1306_WHITE);
+    
+    display.setCursor(8, 22);
+    display.print("Pat: ");
+    String shortName = name;
+    if (shortName.length() > 14) shortName = shortName.substring(0, 14);
+    display.println(shortName);
+    
+    display.setCursor(8, 36);
+    display.println("Please hold still");
+    
+    display.drawRect(8, 48, 112, 8, SSD1306_WHITE);
+    int progress = (millis() / 50) % 104;
+    display.fillRect(12, 50, progress, 4, SSD1306_WHITE);
 }

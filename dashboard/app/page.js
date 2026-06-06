@@ -60,7 +60,9 @@ export default function Dashboard() {
     datetimeStr: '2026-06-02 12:00:00',
     systemAlertLevel: 0,
     sdReady: false,
-    wifiConnected: false
+    wifiConnected: false,
+    monitorMode: 0,
+    countdown: 0
   });
   
   // Logs & reports state
@@ -510,12 +512,26 @@ export default function Dashboard() {
   // 7. Form Operations (Patient details save)
   const savePatientInfo = async (e) => {
     e.preventDefault();
+    const contactInput = e.target.pContact.value.trim();
+    
+    // Cameroon phone standard validation:
+    // Strip optional +237 or 237 prefix, then must be 9 digits starting with 6 or 2
+    const cleanPhone = contactInput.replace(/^\+237|^237/, '');
+    if (!/^[26]\d{8}$/.test(cleanPhone)) {
+      setSaveMessage({ 
+        text: 'Error: Contact number must follow Cameroon standards (9 digits starting with 6 or 2, optionally prefixed with +237 or 237).', 
+        type: 'error' 
+      });
+      setTimeout(() => setSaveMessage({ text: '', type: '' }), 5000);
+      return;
+    }
+
     const data = {
       name: e.target.pName.value,
       age: parseInt(e.target.pAge.value),
       gender: e.target.pGender.value,
       idNumber: e.target.pId.value,
-      emergencyContact: e.target.pContact.value
+      emergencyContact: contactInput
     };
 
     try {
@@ -731,6 +747,43 @@ export default function Dashboard() {
     }
   };
 
+  const startSingleCheck = async (pat) => {
+    console.log(`Starting single vitals check for patient ${pat.name}...`);
+    await activatePatient(pat.idNumber);
+    let targetUrl = `http://${esp32Ip}/api/start_single?name=${encodeURIComponent(pat.name)}&id=${encodeURIComponent(pat.idNumber)}&contact=${encodeURIComponent(pat.emergencyContact)}`;
+    if (esp32Ip === 'localhost' || esp32Ip === '127.0.0.1' || esp32Ip.startsWith('localhost:')) {
+      targetUrl = `/api/start_single?name=${encodeURIComponent(pat.name)}&id=${encodeURIComponent(pat.idNumber)}&contact=${encodeURIComponent(pat.emergencyContact)}`;
+    }
+    fetch(targetUrl, { mode: 'no-cors' }).catch(() => {});
+    if (wsConnected && wsRef.current) {
+      wsRef.current.send(JSON.stringify({ startSingle: pat }));
+    }
+  };
+
+  const startContinuousMonitoring = () => {
+    console.log("Starting continuous vitals monitoring...");
+    let targetUrl = `http://${esp32Ip}/api/start_continuous`;
+    if (esp32Ip === 'localhost' || esp32Ip === '127.0.0.1' || esp32Ip.startsWith('localhost:')) {
+      targetUrl = `/api/start_continuous`;
+    }
+    fetch(targetUrl, { mode: 'no-cors' }).catch(() => {});
+    if (wsConnected && wsRef.current) {
+      wsRef.current.send(JSON.stringify({ startContinuous: true }));
+    }
+  };
+
+  const stopMonitoring = () => {
+    console.log("Stopping vitals monitoring...");
+    let targetUrl = `http://${esp32Ip}/api/stop_monitoring`;
+    if (esp32Ip === 'localhost' || esp32Ip === '127.0.0.1' || esp32Ip.startsWith('localhost:')) {
+      targetUrl = `/api/stop_monitoring`;
+    }
+    fetch(targetUrl, { mode: 'no-cors' }).catch(() => {});
+    if (wsConnected && wsRef.current) {
+      wsRef.current.send(JSON.stringify({ stopMonitoring: true }));
+    }
+  };
+
   // Reset statistical counters
   const resetStatsOnDevice = () => {
     if (wsConnected && wsRef.current) {
@@ -932,6 +985,22 @@ export default function Dashboard() {
                     ))
                   )}
                 </select>
+                {telemetry.monitorMode === 3 ? (
+                  <button
+                    onClick={stopMonitoring}
+                    className="px-3.5 py-1.5 bg-colorCritical hover:bg-red-600 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-[0_0_8px_rgba(239,68,68,0.2)] whitespace-nowrap"
+                  >
+                    <i className="fa-solid fa-circle-stop animate-pulse"></i> Stop Monitoring
+                  </button>
+                ) : (
+                  <button
+                    onClick={startContinuousMonitoring}
+                    disabled={telemetry.monitorMode > 0}
+                    className="px-3.5 py-1.5 bg-colorNormal hover:bg-emerald-600 disabled:opacity-40 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-[0_0_8px_rgba(16,185,129,0.2)] whitespace-nowrap"
+                  >
+                    <i className="fa-solid fa-play"></i> Start Continuous
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1149,6 +1218,12 @@ export default function Dashboard() {
                         </div>
                         <div className="flex items-center justify-between sm:justify-end gap-3 border-t sm:border-t-0 pt-2.5 sm:pt-0 border-border-color">
                           <span className="text-[10px] text-text-muted font-medium block sm:hidden">Action:</span>
+                          <button 
+                            onClick={() => startSingleCheck(item)} 
+                            className="px-3.5 py-1.5 bg-colorBlue/10 hover:bg-colorBlue/20 text-colorBlue border border-colorBlue/20 transition-all text-xs font-semibold rounded-lg flex items-center gap-1.5"
+                          >
+                            <i className="fa-solid fa-heart-pulse"></i> Check Vitals
+                          </button>
                           {isActive ? (
                             <span className="text-xs font-bold text-colorNormal px-2 py-1"><i className="fa-solid fa-circle-check mr-1"></i> Active</span>
                           ) : (
@@ -1620,6 +1695,58 @@ export default function Dashboard() {
         )}
 
       </main>
+
+      {/* Vitals Countdown Overlay Modal */}
+      {telemetry.monitorMode === 1 && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex flex-col items-center justify-center p-4">
+          <div className="bg-bgCard border border-border-color rounded-3xl p-8 max-w-md w-full text-center shadow-2xl flex flex-col items-center gap-6 animate-scale-up">
+            <div className="w-20 h-20 rounded-full bg-colorBlue/10 text-colorBlue border border-colorBlue/20 flex items-center justify-center text-4xl font-extrabold animate-pulse">
+              {telemetry.countdown}
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-white">Preparing Vitals Check</h3>
+              <p className="text-sm text-text-secondary mt-1">
+                Please place your sensors. Collecting vitals for <strong className="text-colorBlue">{patient.name}</strong> shortly...
+              </p>
+            </div>
+            <div className="w-full bg-slate-900/60 rounded-full h-2 overflow-hidden border border-border-color/30">
+              <div 
+                className="bg-colorBlue h-full transition-all duration-1000 rounded-full" 
+                style={{ width: `${(telemetry.countdown / 10) * 100}%` }}
+              />
+            </div>
+            <button 
+              onClick={stopMonitoring}
+              className="px-6 py-2.5 bg-transparent border border-colorCritical hover:bg-colorCritical/10 active:scale-95 text-colorCritical text-xs font-bold rounded-xl transition-all"
+            >
+              Cancel Vitals Check
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Vitals Collecting Overlay Modal */}
+      {telemetry.monitorMode === 2 && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex flex-col items-center justify-center p-4">
+          <div className="bg-bgCard border border-border-color rounded-3xl p-8 max-w-md w-full text-center shadow-2xl flex flex-col items-center gap-6 animate-scale-up">
+            <div className="relative flex h-16 w-16 items-center justify-center">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-colorNormal opacity-75"></span>
+              <div className="relative inline-flex rounded-full h-12 w-12 bg-colorNormal items-center justify-center text-white text-xl">
+                <i className="fa-solid fa-heartbeat animate-pulse"></i>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-white">Reading Vitals...</h3>
+              <p className="text-sm text-text-secondary mt-1">
+                Collecting physiological data for <strong className="text-colorNormal">{patient.name}</strong>. Please hold still.
+              </p>
+            </div>
+            <div className="w-full bg-slate-900/60 rounded-full h-2.5 overflow-hidden border border-border-color/30 relative">
+              <div className="bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-500 h-full w-full animate-pulse rounded-full" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

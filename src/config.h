@@ -20,8 +20,8 @@ struct WifiNetwork {
 #define WIFI_NETWORKS_COUNT 3
 const WifiNetwork WIFI_NETWORKS[WIFI_NETWORKS_COUNT] = {
     {"Javis", "1234567890"},
-    {"EKUTY-PC", "EKUTY-PASS"},
-    {"Home-WiFi", "my_secure_password"}
+    {"DarkDev", "Man2001@"},
+    {"Sheilia", "123456789"}
 };
 #define HOSTED_SERVER_URL "https://vsms-6z4c.onrender.com/api/vitals" // Render hosted Next.js production endpoint
 #define LOCAL_SERVER_URL "http://10.134.242.1:3000/api/vitals"       // Local dev server on your laptop
@@ -105,6 +105,14 @@ enum BPState {
     BP_STATE_DEFLATING = 2,
     BP_STATE_PROCESSING = 3,
     BP_STATE_COMPLETE = 4
+};
+
+// Vitals Monitoring Modes
+enum MonitoringMode {
+    MONITOR_OFF = 0,
+    MONITOR_COUNTDOWN = 1,
+    MONITOR_SINGLE_COLLECT = 2,
+    MONITOR_CONTINUOUS = 3
 };
 
 // Heart Rate (BPM)

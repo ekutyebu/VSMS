@@ -10,7 +10,7 @@ class StorageManager {
 public:
     StorageManager();
     bool begin();
-    bool logData(const SensorData& sensorData, AlertLevel ecgStatus);
+    bool logData(const SensorData& sensorData, AlertLevel ecgStatus, const String& patientId = "");
     bool isReady() const { return sdReady; }
     
     // Read the log file contents and write directly to an output stream (e.g. for web downloads)

@@ -241,6 +241,7 @@ struct SyncPayload {
     char gpsTimestamp[16];
     bool gpsValid;
     char localUrl[128];
+    char patientId[24];
 };
 
 SyncPayload nextSyncPayload;
@@ -271,7 +272,7 @@ void dbSyncTask(void *pvParameters) {
                 Serial.printf("[DB Sync] Free Heap: %u bytes, Max Alloc Block: %u bytes\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
                 
                 StaticJsonDocument<512> doc;
-                doc["patientId"] = "PT-2026-9841";
+                doc["patientId"] = payload.patientId;
                 doc["heartRate"] = payload.heartRate;
                 doc["spo2"] = payload.spo2;
                 doc["tempC"] = payload.tempC;
@@ -336,6 +337,12 @@ void triggerDatabaseSync(const SensorData& d, AlertLevel alert) {
         }
         strncpy(nextSyncPayload.localUrl, localUrl.c_str(), sizeof(nextSyncPayload.localUrl) - 1);
         nextSyncPayload.localUrl[sizeof(nextSyncPayload.localUrl) - 1] = '\0';
+        
+        // Copy patientId dynamically from sensorManager
+        String pId = sensorManager.getActivePatientId();
+        if (pId.length() == 0) pId = "PT-2026-9841";
+        strncpy(nextSyncPayload.patientId, pId.c_str(), sizeof(nextSyncPayload.patientId) - 1);
+        nextSyncPayload.patientId[sizeof(nextSyncPayload.patientId) - 1] = '\0';
         
         xSemaphoreGive(syncMutex);
         xSemaphoreGive(syncSemaphore); // Wake up background task
@@ -406,15 +413,18 @@ void loop() {
         // Push real-time ECG signal sample to WebSocket buffer
         webServerManager.pushEcgSample(sensorManager.getData().ecgValue);
         
-        // Update alert logic based on current sensor state
-        alertManager.update(sensorManager.getData());
+        // Update alert logic based on current sensor state and patient emergency contact
+        alertManager.update(sensorManager.getData(), sensorManager.getActivePatientEmergencyContact());
 
-        // Update local OLED display with rotated pages and alarm overlays
+        // Update local OLED display with rotated pages, alarms, and monitoring countdowns
         displayManager.update(
             sensorManager.getData(),
             alertManager.getAlertLevel(),
             webServerManager.isWifiConnected(),
-            storageManager.isReady()
+            storageManager.isReady(),
+            (int)sensorManager.getMonitoringMode(),
+            sensorManager.getCountdownSeconds(),
+            sensorManager.getActivePatientName()
         );
     }
 
@@ -422,13 +432,19 @@ void loop() {
     webServerManager.update(alertManager.getAlertLevel());
 
     // 3. Periodic local SD card data logging and Central PostgreSQL sync (every 5 seconds)
-    if (currentMillis - lastLogMs >= SYNC_INTERVAL_MS) {
-        lastLogMs = currentMillis;
-        
-        // Local log
-        storageManager.logData(sensorManager.getData(), alertManager.getAlertLevel());
-        
-        // Trigger non-blocking database sync on Core 0
+    // Only logs and syncs on 5s interval if Continuous Monitoring is active
+    if (sensorManager.getMonitoringMode() == MONITOR_CONTINUOUS) {
+        if (currentMillis - lastLogMs >= SYNC_INTERVAL_MS) {
+            lastLogMs = currentMillis;
+            storageManager.logData(sensorManager.getData(), alertManager.getAlertLevel(), sensorManager.getActivePatientId());
+            triggerDatabaseSync(sensorManager.getData(), alertManager.getAlertLevel());
+        }
+    }
+    
+    // Check if a single check vitals snapshot collection has just completed
+    if (sensorManager.checkAndClearSingleCollectFlag()) {
+        Serial.println("[System] Logging single-shot vitals check to SD card and syncing to database...");
+        storageManager.logData(sensorManager.getData(), alertManager.getAlertLevel(), sensorManager.getActivePatientId());
         triggerDatabaseSync(sensorManager.getData(), alertManager.getAlertLevel());
     }
 }

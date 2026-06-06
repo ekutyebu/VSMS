@@ -62,7 +62,37 @@ public:
     void startBPMeasurement();
     void cancelBPMeasurement();
 
+    // Monitoring mode triggers and patient biodata setters
+    void setPatientInfo(const String& name, const String& id, const String& contact);
+    void startSingleCheck();
+    void startContinuousMonitoring();
+    void stopMonitoring();
+    
+    MonitoringMode getMonitoringMode() const { return monitorMode; }
+    int getCountdownSeconds() const { return countdownSeconds; }
+    String getActivePatientId() const { return activePatientId; }
+    String getActivePatientName() const { return activePatientName; }
+    String getActivePatientEmergencyContact() const { return activePatientEmergencyContact; }
+    
+    bool checkAndClearSingleCollectFlag() {
+        if (singleCollectCompleteFlag) {
+            singleCollectCompleteFlag = false;
+            return true;
+        }
+        return false;
+    }
+
 private:
+    // Monitoring Mode State Variables
+    MonitoringMode monitorMode;
+    int countdownSeconds;
+    unsigned long lastCountdownSecondMs;
+    unsigned long collectStartMs;
+    bool singleCollectCompleteFlag;
+    
+    String activePatientName;
+    String activePatientId;
+    String activePatientEmergencyContact;
     SensorData data;
     
     // Hardware sensor instances

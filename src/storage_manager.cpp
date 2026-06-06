@@ -30,7 +30,7 @@ void StorageManager::writeHeader() {
     if (!SD.exists(logFilename)) {
         File file = SD.open(logFilename, FILE_WRITE);
         if (file) {
-            file.println("Date,Time,BPM,SpO2,Temperature,BloodPressure,ECGStatus,GPSLocation");
+            file.println("PatientID,Date,Time,BPM,SpO2,Temperature,BloodPressure,ECGStatus,GPSLocation");
             file.close();
             Serial.println("[StorageManager] Log file created with CSV header.");
         } else {
@@ -39,10 +39,13 @@ void StorageManager::writeHeader() {
     }
 }
 
-bool StorageManager::logData(const SensorData& sensorData, AlertLevel status) {
+bool StorageManager::logData(const SensorData& sensorData, AlertLevel status, const String& patientId) {
     // Parse Date and Time from datetimeStr (Format: YYYY-MM-DD HH:MM:SS)
     String datePart = sensorData.datetimeStr.substring(0, 10);
     String timePart = sensorData.datetimeStr.substring(11);
+    
+    String patId = patientId;
+    if (patId.length() == 0) patId = "PT-2026-9841";
     
     String statusStr = "Normal";
     if (status == STATUS_WARNING) {
@@ -65,8 +68,9 @@ bool StorageManager::logData(const SensorData& sensorData, AlertLevel status) {
         sprintf(bpStr, "%d/%d/%d", sensorData.bpSystolic, sensorData.bpDiastolic, sensorData.bpMAP);
     }
     
-    char logLine[180];
-    sprintf(logLine, "%s,%s,%d,%d,%.1f,%s,%s,%s",
+    char logLine[220];
+    sprintf(logLine, "%s,%s,%s,%d,%d,%.1f,%s,%s,%s",
+            patId.c_str(),
             datePart.c_str(),
             timePart.c_str(),
             (int)sensorData.heartRate,

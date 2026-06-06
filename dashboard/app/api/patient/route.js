@@ -63,6 +63,16 @@ export async function POST(request) {
       );
     }
     
+    // Cameroon phone standard validation:
+    // Strip optional +237 or 237 prefix, then must be 9 digits starting with 6 or 2
+    const cleanPhone = emergencyContact.trim().replace(/^\+237|^237/, '');
+    if (!/^[26]\d{8}$/.test(cleanPhone)) {
+      return NextResponse.json(
+        { error: 'Invalid Cameroon phone number standard (must be 9 digits starting with 6 or 2)' },
+        { status: 400 }
+      );
+    }
+    
     const upsertQuery = `
       INSERT INTO patients (name, age, gender, id_number, emergency_contact)
       VALUES ($1, $2, $3, $4, $5)
