@@ -6,6 +6,23 @@ import Chart from 'chart.js/auto';
 export default function Dashboard() {
   // Navigation active tab
   const [activeTab, setActiveTab] = useState('home');
+
+  // Restore active tab from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedTab = localStorage.getItem('activeTab');
+      if (savedTab) {
+        setActiveTab(savedTab);
+      }
+    }
+  }, []);
+
+  // Save active tab changes to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('activeTab', activeTab);
+    }
+  }, [activeTab]);
   
   // Settings & IP addresses
   const [esp32Ip, setEsp32Ip] = useState('192.168.4.1');

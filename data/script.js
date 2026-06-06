@@ -37,6 +37,10 @@ window.addEventListener('load', () => {
     fetchPatientInfo();
     connectWebSocket();
     
+    // Restore active tab from localStorage on page load
+    const savedTab = localStorage.getItem('activeTab') || 'home';
+    switchSection(savedTab);
+    
     // Connect form listener
     document.getElementById('patient-form').addEventListener('submit', savePatientInfo);
     document.getElementById('report-form').addEventListener('submit', generateReport);
@@ -69,6 +73,7 @@ function initNavigation() {
 
 function switchSection(targetId) {
     activeSection = targetId;
+    localStorage.setItem('activeTab', targetId);
     
     // Update active nav class
     document.querySelectorAll('.nav-item').forEach(item => {
@@ -631,6 +636,16 @@ function resetPatientForm() {
 
 // 8. MAPS AND POSITION INTEGRATION
 function initMap() {
+    // Fix default marker path resolution by pointing to CDN urls
+    if (typeof L !== 'undefined' && L.Icon && L.Icon.Default) {
+        delete L.Icon.Default.prototype._getIconUrl;
+        L.Icon.Default.mergeOptions({
+            iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+            iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+            shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+        });
+    }
+
     // King's College Hospital default starting center (51.4687, -0.0934)
     const lat = 51.4687;
     const lng = -0.0934;

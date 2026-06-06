@@ -27,24 +27,39 @@ bool WebServerManager::begin(StorageManager* storageMgr, SensorManager* sensorMg
         Serial.printf("[WebServerManager] Access Point started.\nSSID: %s\nIP: %s\n", WIFI_SSID, ip.toString().c_str());
         wifiConnected = false;
     } else {
-        Serial.printf("[WebServerManager] Connecting to SSID: %s...\n", LOCAL_SSID);
-        WiFi.begin(LOCAL_SSID, LOCAL_PASSWORD);
-        
-        int retries = 0;
-        while (WiFi.status() != WL_CONNECTED && retries < 20) {
-            delay(500);
-            Serial.print(".");
-            retries++;
+        bool connected = false;
+        for (int i = 0; i < WIFI_NETWORKS_COUNT; i++) {
+            const char* ssid = WIFI_NETWORKS[i].ssid;
+            const char* password = WIFI_NETWORKS[i].password;
+            
+            Serial.printf("[WebServerManager] Attempting to connect to SSID (%d/%d): %s...\n", i + 1, WIFI_NETWORKS_COUNT, ssid);
+            WiFi.begin(ssid, password);
+            
+            int retries = 0;
+            while (WiFi.status() != WL_CONNECTED && retries < 15) { // 7.5 seconds timeout per network
+                delay(500);
+                Serial.print(".");
+                retries++;
+            }
+            Serial.println();
+            
+            if (WiFi.status() == WL_CONNECTED) {
+                connected = true;
+                wifiConnected = true;
+                Serial.printf("[WebServerManager] Connected to Wi-Fi. IP: %s\n", WiFi.localIP().toString().c_str());
+                // Sync time with NTP server for secure SSL/TLS handshakes (offset by 3600 seconds for GMT+1)
+                configTime(3600, 0, "pool.ntp.org", "time.nist.gov");
+                Serial.println("[WebServerManager] NTP Time Sync configured for GMT+1.");
+                break; // Exit connection scan loop
+            } else {
+                Serial.printf("[WebServerManager] Connection to %s failed.\n", ssid);
+                WiFi.disconnect(true);
+                delay(500);
+            }
         }
         
-        if (WiFi.status() == WL_CONNECTED) {
-            wifiConnected = true;
-            Serial.printf("\n[WebServerManager] Connected to Wi-Fi. IP: %s\n", WiFi.localIP().toString().c_str());
-            // Sync time with NTP server for secure SSL/TLS handshakes (offset by 3600 seconds for GMT+1)
-            configTime(3600, 0, "pool.ntp.org", "time.nist.gov");
-            Serial.println("[WebServerManager] NTP Time Sync configured for GMT+1.");
-        } else {
-            Serial.println("\n[WebServerManager] Wi-Fi connection failed. Falling back to AP mode...");
+        if (!connected) {
+            Serial.println("[WebServerManager] All configured Wi-Fi networks failed. Falling back to AP mode...");
             WiFi.softAP(WIFI_SSID, WIFI_PASSWORD);
             IPAddress ip = WiFi.softAPIP();
             Serial.printf("[WebServerManager] Access Point started.\nSSID: %s\nIP: %s\n", WIFI_SSID, ip.toString().c_str());

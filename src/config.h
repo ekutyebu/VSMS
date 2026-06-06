@@ -9,8 +9,20 @@
 #define WIFI_SSID "Javis"
 #define WIFI_PASSWORD "1234567890"
 #define WIFI_IS_AP false // Set to true to start as Access Point, false to connect to local router
-#define LOCAL_SSID "Javis"
-#define LOCAL_PASSWORD "1234567890"
+
+// Structure for multi-WiFi credentials support
+struct WifiNetwork {
+    const char* ssid;
+    const char* password;
+};
+
+// Configurable list of Wi-Fi networks the device can connect to sequentially
+#define WIFI_NETWORKS_COUNT 3
+const WifiNetwork WIFI_NETWORKS[WIFI_NETWORKS_COUNT] = {
+    {"Javis", "1234567890"},
+    {"EKUTY-PC", "EKUTY-PASS"},
+    {"Home-WiFi", "my_secure_password"}
+};
 #define HOSTED_SERVER_URL "https://vsms-6z4c.onrender.com/api/vitals" // Render hosted Next.js production endpoint
 #define LOCAL_SERVER_URL "http://10.134.242.1:3000/api/vitals"       // Local dev server on your laptop
 #define SYNC_INTERVAL_MS 5000                                // POST logs to PostgreSQL database every 5 seconds
@@ -54,7 +66,7 @@
 #define GSM_RX_PIN 27
 #define GSM_TX_PIN 14
 #define GSM_BAUD_RATE 9600
-#define EMERGENCY_PHONE_NUMBER "+1234567890"
+#define EMERGENCY_PHONE_NUMBER "+659085520"
 
 // MicroSD Card Module (SPI)
 #define SD_CS_PIN 5
