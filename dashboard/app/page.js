@@ -985,6 +985,15 @@ export default function Dashboard() {
                     ))
                   )}
                 </select>
+                {telemetry.monitorMode !== 3 && (
+                  <button
+                    onClick={() => startSingleCheck(patient)}
+                    disabled={telemetry.monitorMode > 0}
+                    className="px-3.5 py-1.5 bg-colorBlue hover:bg-blue-600 disabled:opacity-40 active:scale-95 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-[0_0_8px_rgba(59,130,246,0.2)] whitespace-nowrap"
+                  >
+                    <i className="fa-solid fa-heart-pulse"></i> Check Vitals
+                  </button>
+                )}
                 {telemetry.monitorMode === 3 ? (
                   <button
                     onClick={stopMonitoring}
