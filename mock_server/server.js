@@ -18,6 +18,9 @@ let hrMin = 999;
 let hrMax = 0;
 let hrSum = 0;
 let hrCount = 0;
+let monitorMode = 0; // 0=off, 1=countdown, 2=collecting, 3=continuous
+let countdownSeconds = 0;
+let collectSeconds = 0;
 
 // API: Save Patient Details
 app.post('/api/save_patient', (req, res) => {
@@ -73,6 +76,29 @@ app.get('/api/clear_logs', (req, res) => {
     res.json({ status: 'success' });
 });
 
+// API: Start Countdown-Based Vitals Check
+app.get('/api/start_single', (req, res) => {
+    monitorMode = 1;
+    countdownSeconds = 10;
+    console.log('[Mock Server] HTTP start_single triggered. Mode: countdown.');
+    res.json({ status: 'success', message: 'Single check countdown initiated' });
+});
+
+// API: Start Continuous Vitals Monitoring
+app.get('/api/start_continuous', (req, res) => {
+    monitorMode = 3;
+    console.log('[Mock Server] HTTP start_continuous triggered. Mode: continuous.');
+    res.json({ status: 'success', message: 'Continuous monitoring started' });
+});
+
+// API: Stop Vitals Monitoring
+app.get('/api/stop_monitoring', (req, res) => {
+    monitorMode = 0;
+    countdownSeconds = 0;
+    console.log('[Mock Server] HTTP stop_monitoring triggered. Mode: off.');
+    res.json({ status: 'success', message: 'Monitoring stopped' });
+});
+
 // Create HTTP Server
 const server = http.createServer(app);
 
@@ -91,6 +117,22 @@ wss.on('connection', (ws) => {
     // Send data stream every 1 second
     const intervalId = setInterval(() => {
         simTick++;
+        
+        // Countdown/collection state machine
+        if (monitorMode === 1) {
+            countdownSeconds--;
+            if (countdownSeconds <= 0) {
+                monitorMode = 2; // Transition to single collect
+                collectSeconds = 5; // Collect for 5 seconds
+                console.log('[Mock Server] Countdown finished. Collecting vitals snapshot for 5s.');
+            }
+        } else if (monitorMode === 2) {
+            collectSeconds--;
+            if (collectSeconds <= 0) {
+                monitorMode = 0; // Turn monitoring off
+                console.log('[Mock Server] Single vitals collection complete.');
+            }
+        }
         
         let hr = 72;
         let spo2 = 98.5;
@@ -160,7 +202,9 @@ wss.on('connection', (ws) => {
             systemAlertLevel: alertLevel,
             sdReady: true,
             wifiConnected: true,
-            ecgBuffer: generateEcgBuffer(hr)
+            ecgBuffer: generateEcgBuffer(hr),
+            monitorMode: monitorMode,
+            countdown: countdownSeconds
         };
         
         ws.send(JSON.stringify(telemetry));
@@ -181,6 +225,20 @@ wss.on('connection', (ws) => {
                 hrSum = 0;
                 hrCount = 0;
                 console.log('[WebSocket] Heart rate stats reset.');
+            }
+            if (data.hasOwnProperty('startSingle')) {
+                monitorMode = 1;
+                countdownSeconds = 10;
+                console.log('[WebSocket] startSingle command received. Mode: countdown.');
+            }
+            if (data.hasOwnProperty('startContinuous')) {
+                monitorMode = 3;
+                console.log('[WebSocket] startContinuous command received. Mode: continuous.');
+            }
+            if (data.hasOwnProperty('stopMonitoring')) {
+                monitorMode = 0;
+                countdownSeconds = 0;
+                console.log('[WebSocket] stopMonitoring command received. Mode: off.');
             }
         } catch (err) {
             console.error('[WebSocket] Error parsing client message:', err);

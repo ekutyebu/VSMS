@@ -316,7 +316,16 @@ export default function Dashboard() {
   // 4. Telemetry data processor helper
   const processTelemetryPayload = (payload) => {
     // 4.1 Update telemetry state
-    setTelemetry(payload);
+    setTelemetry(prev => {
+      const nextTelemetry = { ...prev, ...payload };
+      if (payload.monitorMode === undefined) {
+        nextTelemetry.monitorMode = prev.monitorMode;
+      }
+      if (payload.countdown === undefined) {
+        nextTelemetry.countdown = prev.countdown;
+      }
+      return nextTelemetry;
+    });
     
     if (payload.noData) return;
     
@@ -984,7 +993,7 @@ export default function Dashboard() {
                   <h3 className="text-sm md:text-base font-extrabold text-text-primary">{patient.name} <span className="text-xs text-text-muted font-normal">({patient.idNumber})</span></h3>
                 </div>
               </div>
-              <div className="flex items-center gap-3 self-stretch sm:self-auto justify-between sm:justify-start">
+              <div className="flex flex-wrap items-center gap-2 md:gap-3 self-stretch sm:self-auto justify-center sm:justify-start">
                 <span className="text-[11px] text-text-secondary font-semibold flex items-center gap-1"><i className="fa-solid fa-clock-rotate-left"></i> Live</span>
                 <select
                   value={patient.idNumber}
