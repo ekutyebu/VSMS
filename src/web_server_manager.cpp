@@ -112,19 +112,6 @@ bool WebServerManager::begin(StorageManager* storageMgr, SensorManager* sensorMg
 }
 
 void WebServerManager::setupRoutes() {
-    // Serve static dashboard pages from SPIFFS
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(SPIFFS, "/index.html", "text/html");
-    });
-    
-    server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(SPIFFS, "/style.css", "text/css");
-    });
-    
-    server.on("/script.js", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(SPIFFS, "/script.js", "application/javascript");
-    });
-    
     server.on("/patient.json", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(SPIFFS, "/patient.json", "application/json");
     });
